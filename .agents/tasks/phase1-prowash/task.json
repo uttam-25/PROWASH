@@ -1,0 +1,7 @@
+{
+  "task_id": "task-phase1-prowash",
+  "task_description": "Scaffold and implement Phase 1 of PROWASH: a React Native/Expo mobile app with Node.js/Express/MongoDB backend. Covers project structure, branding/theme, auth backend (register, login, forgot/reset password, admin seed), and mobile auth screens (splash, welcome, login, register, forgot/reset password, customer home stub, admin home stub) with secure token handling.",
+  "status": "completed",
+  "feature_order": ["FEAT-001", "FEAT-002"],
+  "blocked_reason": null
+}
