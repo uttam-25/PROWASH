@@ -20,7 +20,7 @@ export default function CustomerNavigator() {
           borderTopColor: colors.border,
           borderTopWidth: 1,
           elevation: 8,
-          shadowColor: '#000',
+          shadowColor: colors.black,
           shadowOffset: { width: 0, height: -2 },
           shadowOpacity: 0.06,
           shadowRadius: 8,
