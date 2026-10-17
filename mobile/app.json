@@ -1,0 +1,36 @@
+{
+  "expo": {
+    "name": "PROWASH",
+    "slug": "prowash",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./src/assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "splash": {
+      "image": "./src/assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0B1B2B"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.prowash.app"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./src/assets/icon.png",
+        "backgroundColor": "#0B1B2B"
+      },
+      "package": "com.prowash.app"
+    },
+    "web": {
+      "favicon": "./src/assets/icon.png"
+    },
+    "scheme": "prowash",
+    "plugins": [
+      "expo-secure-store"
+    ],
+    "extra": {
+      "apiUrl": "http://localhost:5000/api"
+    }
+  }
+}
