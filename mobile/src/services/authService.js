@@ -48,3 +48,21 @@ export async function resetPassword(token, password) {
   });
   return response.data;
 }
+
+/**
+ * Update the authenticated user's profile.
+ * @param {{ name, phone }} data
+ */
+export async function updateProfile(data) {
+  const response = await api.put('/auth/profile', data);
+  return response.data;
+}
+
+/**
+ * Change the authenticated user's password.
+ * @param {{ currentPassword, newPassword }} data
+ */
+export async function changePassword(data) {
+  const response = await api.put('/auth/change-password', data);
+  return response.data;
+}

@@ -25,6 +25,8 @@ function authReducer(state, action) {
       return { ...state, user: null, token: null, loading: false };
     case 'SET_LOADING':
       return { ...state, loading: action.loading };
+    case 'UPDATE_USER':
+      return { ...state, user: { ...state.user, ...action.user } };
     default:
       return state;
   }
@@ -98,6 +100,10 @@ export function AuthProvider({ children }) {
     return data;
   }, []);
 
+  const updateUser = useCallback((userData) => {
+    dispatch({ type: 'UPDATE_USER', user: userData });
+  }, []);
+
   const value = {
     user: state.user,
     token: state.token,
@@ -105,6 +111,7 @@ export function AuthProvider({ children }) {
     login,
     logout,
     register,
+    updateUser,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
