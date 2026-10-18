@@ -41,3 +41,70 @@ export const sendPushNotification = async (userId, title, body, type = 'general'
     console.error('[Notification] Failed to persist notification:', err.message);
   }
 };
+
+// ---------------------------------------------------------------------------
+// Semantic helper functions — each wraps createNotification with a specific
+// title/body/type. Callers fire-and-forget with .catch(console.error).
+// userId is always taken from booking.customerId so helpers work even when
+// the customer object is not fully populated.
+// ---------------------------------------------------------------------------
+
+export async function notifyBookingCreated(booking, customer) {
+  await createNotification(
+    booking.customerId,
+    'Booking Received',
+    `Your ${booking.serviceNameSnapshot} is pending confirmation.`,
+    'booking',
+    { bookingId: booking._id }
+  );
+}
+
+export async function notifyBookingConfirmed(booking, customer) {
+  await createNotification(
+    booking.customerId,
+    'Booking Confirmed',
+    `Your booking ${booking.bookingReference} has been confirmed.`,
+    'booking',
+    { bookingId: booking._id }
+  );
+}
+
+export async function notifyBookingCancelled(booking, customer) {
+  await createNotification(
+    booking.customerId,
+    'Booking Cancelled',
+    `Your booking ${booking.bookingReference} has been cancelled.`,
+    'booking',
+    { bookingId: booking._id }
+  );
+}
+
+export async function notifyPaymentConfirmed(booking, customer) {
+  await createNotification(
+    booking.customerId,
+    'Payment Confirmed',
+    `Payment for booking ${booking.bookingReference} has been received.`,
+    'payment',
+    { bookingId: booking._id }
+  );
+}
+
+export async function notifyWashStarted(booking, customer) {
+  await createNotification(
+    booking.customerId,
+    'Wash Started',
+    `Your wash for ${booking.serviceNameSnapshot} has started!`,
+    'booking',
+    { bookingId: booking._id }
+  );
+}
+
+export async function notifyWashCompleted(booking, customer) {
+  await createNotification(
+    booking.customerId,
+    'Wash Completed',
+    `Your ${booking.serviceNameSnapshot} is complete. Thank you!`,
+    'booking',
+    { bookingId: booking._id }
+  );
+}

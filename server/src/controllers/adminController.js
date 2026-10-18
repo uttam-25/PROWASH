@@ -7,6 +7,7 @@ import Notification from '../models/Notification.js';
 import Schedule from '../models/Schedule.js';
 import Vehicle from '../models/Vehicle.js';
 import { AppError } from '../middleware/errorHandler.js';
+import { notifyBookingConfirmed, notifyWashStarted, notifyWashCompleted, notifyPaymentConfirmed } from '../services/notificationService.js';
 
 // IST offset in ms
 const IST_OFFSET_MS = 19800000;
@@ -117,14 +118,23 @@ export const updateBookingStatus = async (req, res, next) => {
 
     await booking.save();
 
-    // Notify customer
-    await Notification.create({
-      user: booking.customerId,
-      title: 'Booking Update',
-      body: `Your booking ${booking.bookingReference} status is now: ${status.replace(/_/g, ' ')}.`,
-      type: 'booking',
-      data: { bookingId: booking._id },
-    });
+    // Notify customer with status-specific helpers (fire-and-forget)
+    if (status === 'confirmed') {
+      notifyBookingConfirmed(booking, null).catch(console.error);
+    } else if (status === 'in_progress') {
+      notifyWashStarted(booking, null).catch(console.error);
+    } else if (status === 'completed') {
+      notifyWashCompleted(booking, null).catch(console.error);
+    } else {
+      // cancelled/rejected — notify generically
+      Notification.create({
+        user: booking.customerId,
+        title: 'Booking Update',
+        body: `Your booking ${booking.bookingReference} status is now: ${status.replace(/_/g, ' ')}.`,
+        type: 'booking',
+        data: { bookingId: booking._id },
+      }).catch(console.error);
+    }
 
     await booking.populate('customerId', 'name email phone');
     await booking.populate('vehicleId', 'make model licensePlate type');
@@ -590,14 +600,10 @@ export const recordCODCollection = async (req, res, next) => {
     // Get customerId
     const customerId = booking ? booking.customerId : payment.customerId;
 
-    // Create notification
-    await Notification.create({
-      user: customerId,
-      title: 'Payment Collected',
-      body: 'Your COD payment for booking has been collected.',
-      type: 'payment',
-      data: { paymentId: payment._id },
-    });
+    // Notify customer (fire-and-forget)
+    if (booking) {
+      notifyPaymentConfirmed(booking, null).catch(console.error);
+    }
 
     await payment.populate({
       path: 'bookingId',

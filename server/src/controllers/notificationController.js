@@ -3,18 +3,24 @@ import { AppError } from '../middleware/errorHandler.js';
 
 // ---------------------------------------------------------------------------
 // GET /api/notifications  (protect, sorted newest first)
+// Supports ?read=false to filter unread only
 // ---------------------------------------------------------------------------
 export const getMyNotifications = async (req, res, next) => {
   try {
-    const notifications = await Notification.find({ user: req.user._id }).sort({ createdAt: -1 });
-    res.json({ success: true, data: notifications });
+    const filter = { user: req.user._id };
+    if (req.query.read === 'false') filter.isRead = false;
+
+    const notifications = await Notification.find(filter).sort({ createdAt: -1 });
+    const unreadCount = await Notification.countDocuments({ user: req.user._id, isRead: false });
+
+    res.json({ success: true, data: { notifications, unreadCount } });
   } catch (err) {
     next(err);
   }
 };
 
 // ---------------------------------------------------------------------------
-// PUT /api/notifications/:id/read  (protect, ownership check)
+// PATCH /api/notifications/:id/read  (protect, ownership check)
 // ---------------------------------------------------------------------------
 export const markRead = async (req, res, next) => {
   try {
@@ -37,16 +43,16 @@ export const markRead = async (req, res, next) => {
 };
 
 // ---------------------------------------------------------------------------
-// PUT /api/notifications/read-all  (protect)
+// PATCH /api/notifications/read-all  (protect)
 // ---------------------------------------------------------------------------
 export const markAllRead = async (req, res, next) => {
   try {
-    await Notification.updateMany(
+    const result = await Notification.updateMany(
       { user: req.user._id, isRead: false },
       { $set: { isRead: true } }
     );
 
-    res.json({ success: true, data: { message: 'All notifications marked as read' } });
+    res.json({ success: true, data: { count: result.modifiedCount } });
   } catch (err) {
     next(err);
   }

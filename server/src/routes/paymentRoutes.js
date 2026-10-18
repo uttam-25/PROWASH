@@ -1,5 +1,8 @@
 import { Router } from 'express';
 import {
+  createRazorpayOrder,
+  verifyPayment,
+  handleWebhook,
   getMyPayments,
   getPayment,
   getAllPayments,
@@ -9,7 +12,12 @@ import { protect, requireAdmin } from '../middleware/auth.js';
 
 const router = Router();
 
+// Webhook — no auth, must be first (before /:id)
+router.post('/webhook', handleWebhook);
+
 // Customer routes
+router.post('/create-order', protect, createRazorpayOrder);
+router.post('/verify', protect, verifyPayment);
 router.get('/my', protect, getMyPayments);
 router.get('/:id', protect, getPayment);
 

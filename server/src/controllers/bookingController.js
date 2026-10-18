@@ -3,6 +3,7 @@ import Vehicle from '../models/Vehicle.js';
 import Service from '../models/Service.js';
 import Payment from '../models/Payment.js';
 import Notification from '../models/Notification.js';
+import { notifyBookingCreated, notifyBookingCancelled } from '../services/notificationService.js';
 import { getAvailableSlots } from '../services/availabilityService.js';
 import { AppError } from '../middleware/errorHandler.js';
 
@@ -80,22 +81,15 @@ export const createBooking = async (req, res, next) => {
     });
 
     // Create payment record
-    const paymentMethod_mapped = paymentMethod === 'online' ? 'razorpay' : 'cod';
     await Payment.create({
-      booking: booking._id,
-      customer: req.user._id,
+      bookingId: booking._id,
+      customerId: req.user._id,
       amount: service.price,
-      method: paymentMethod_mapped,
+      method: paymentMethod, // 'cod' or 'online' — matches schema enum
     });
 
-    // Create notification
-    await Notification.create({
-      user: req.user._id,
-      title: 'Booking Received',
-      body: `Your ${service.name} appointment is pending confirmation.`,
-      type: 'booking',
-      data: { bookingId: booking._id },
-    });
+    // Notify customer (fire-and-forget)
+    notifyBookingCreated(booking, req.user).catch(console.error);
 
     // Populate and return
     const populated = await Booking.findById(booking._id)
@@ -205,14 +199,8 @@ export const cancelBooking = async (req, res, next) => {
     });
     await booking.save();
 
-    // Notify customer
-    await Notification.create({
-      user: req.user._id,
-      title: 'Booking Cancelled',
-      body: `Your booking ${booking.bookingReference} has been cancelled.`,
-      type: 'booking',
-      data: { bookingId: booking._id },
-    });
+    // Notify customer (fire-and-forget)
+    notifyBookingCancelled(booking, req.user).catch(console.error);
 
     res.json({ success: true, data: booking });
   } catch (err) {
