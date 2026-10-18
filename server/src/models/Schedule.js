@@ -14,16 +14,14 @@ const blockedPeriodSchema = new mongoose.Schema(
     label: { type: String },
     startAt: { type: Date, required: true },
     endAt: { type: Date, required: true },
-  },
-  { _id: false }
+  }
 );
 
 const holidaySchema = new mongoose.Schema(
   {
     date: { type: String, required: true }, // 'YYYY-MM-DD'
     label: { type: String },
-  },
-  { _id: false }
+  }
 );
 
 const scheduleSchema = new mongoose.Schema(

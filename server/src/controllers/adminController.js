@@ -1,8 +1,11 @@
+import mongoose from 'mongoose';
 import Booking from '../models/Booking.js';
 import Payment from '../models/Payment.js';
 import User from '../models/User.js';
 import Service from '../models/Service.js';
 import Notification from '../models/Notification.js';
+import Schedule from '../models/Schedule.js';
+import Vehicle from '../models/Vehicle.js';
 import { AppError } from '../middleware/errorHandler.js';
 
 // IST offset in ms
@@ -254,3 +257,357 @@ export const getAdminReports = async (req, res, next) => {
 
 // Backward compat alias
 export const getReports = getAdminReports;
+
+// ---------------------------------------------------------------------------
+// GET /api/admin/schedule  (protect + requireAdmin)
+// ---------------------------------------------------------------------------
+export const getSchedule = async (req, res, next) => {
+  try {
+    const schedule = await Schedule.findOne();
+    res.json({ success: true, data: schedule || {} });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ---------------------------------------------------------------------------
+// PUT /api/admin/schedule  (protect + requireAdmin)
+// ---------------------------------------------------------------------------
+export const updateSchedule = async (req, res, next) => {
+  try {
+    const { workingDays, openingTime, closingTime, slotIntervalMinutes, maxConcurrentBookings, breaks } = req.body;
+
+    const timeRegex = /^\d{2}:\d{2}$/;
+    if (openingTime && !timeRegex.test(openingTime)) {
+      return next(new AppError('openingTime must match HH:MM format', 400));
+    }
+    if (closingTime && !timeRegex.test(closingTime)) {
+      return next(new AppError('closingTime must match HH:MM format', 400));
+    }
+
+    const fields = {};
+    if (workingDays !== undefined) fields.workingDays = workingDays;
+    if (openingTime !== undefined) fields.openingTime = openingTime;
+    if (closingTime !== undefined) fields.closingTime = closingTime;
+    if (slotIntervalMinutes !== undefined) fields.slotIntervalMinutes = slotIntervalMinutes;
+    if (maxConcurrentBookings !== undefined) fields.maxConcurrentBookings = maxConcurrentBookings;
+    if (breaks !== undefined) fields.breaks = breaks;
+
+    const schedule = await Schedule.findOneAndUpdate(
+      {},
+      { $set: fields },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
+
+    res.json({ success: true, data: schedule });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ---------------------------------------------------------------------------
+// POST /api/admin/schedule/block  (protect + requireAdmin)
+// ---------------------------------------------------------------------------
+export const addBlockedPeriod = async (req, res, next) => {
+  try {
+    const { label, startAt, endAt } = req.body;
+
+    const startDate = new Date(startAt);
+    const endDate = new Date(endAt);
+
+    if (isNaN(startDate.getTime())) {
+      return next(new AppError('startAt is not a valid date', 400));
+    }
+    if (isNaN(endDate.getTime())) {
+      return next(new AppError('endAt is not a valid date', 400));
+    }
+    if (startDate >= endDate) {
+      return next(new AppError('startAt must be before endAt', 400));
+    }
+    if (startDate <= new Date()) {
+      return next(new AppError('startAt must be in the future', 400));
+    }
+
+    const schedule = await Schedule.findOneAndUpdate(
+      {},
+      { $push: { blockedPeriods: { label, startAt: startDate, endAt: endDate } } },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
+
+    res.json({ success: true, data: schedule });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ---------------------------------------------------------------------------
+// DELETE /api/admin/schedule/block/:periodId  (protect + requireAdmin)
+// ---------------------------------------------------------------------------
+export const removeBlockedPeriod = async (req, res, next) => {
+  try {
+    const periodId = new mongoose.Types.ObjectId(req.params.periodId);
+
+    const schedule = await Schedule.findOneAndUpdate(
+      {},
+      { $pull: { blockedPeriods: { _id: periodId } } },
+      { new: true }
+    );
+
+    res.json({ success: true, data: schedule });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ---------------------------------------------------------------------------
+// POST /api/admin/schedule/holiday  (protect + requireAdmin)
+// ---------------------------------------------------------------------------
+export const addHoliday = async (req, res, next) => {
+  try {
+    const { date, label } = req.body;
+
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      return next(new AppError('date must match YYYY-MM-DD format', 400));
+    }
+
+    const schedule = await Schedule.findOneAndUpdate(
+      {},
+      { $push: { holidays: { date, label } } },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
+
+    res.json({ success: true, data: schedule });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ---------------------------------------------------------------------------
+// DELETE /api/admin/schedule/holiday/:holidayId  (protect + requireAdmin)
+// ---------------------------------------------------------------------------
+export const removeHoliday = async (req, res, next) => {
+  try {
+    const holidayId = new mongoose.Types.ObjectId(req.params.holidayId);
+
+    const schedule = await Schedule.findOneAndUpdate(
+      {},
+      { $pull: { holidays: { _id: holidayId } } },
+      { new: true }
+    );
+
+    res.json({ success: true, data: schedule });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ---------------------------------------------------------------------------
+// GET /api/admin/customers  (protect + requireAdmin)
+// ---------------------------------------------------------------------------
+export const getCustomers = async (req, res, next) => {
+  try {
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.min(50, Math.max(1, parseInt(req.query.limit) || 20));
+    const skip = (page - 1) * limit;
+
+    const matchFilter = { role: 'customer' };
+    if (req.query.search) {
+      const searchRegex = new RegExp(req.query.search, 'i');
+      matchFilter.$or = [
+        { name: searchRegex },
+        { email: searchRegex },
+        { phone: searchRegex },
+      ];
+    }
+
+    const total = await User.countDocuments(matchFilter);
+
+    const customers = await User.aggregate([
+      { $match: matchFilter },
+      {
+        $lookup: {
+          from: 'bookings',
+          localField: '_id',
+          foreignField: 'customerId',
+          as: 'bookings',
+        },
+      },
+      { $addFields: { totalBookings: { $size: '$bookings' } } },
+      { $project: { bookings: 0 } },
+      { $sort: { createdAt: -1 } },
+      { $skip: skip },
+      { $limit: limit },
+    ]);
+
+    res.json({
+      success: true,
+      data: { customers, total, page, pages: Math.ceil(total / limit) },
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ---------------------------------------------------------------------------
+// GET /api/admin/customers/:id  (protect + requireAdmin)
+// ---------------------------------------------------------------------------
+export const getCustomerDetails = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+
+    const customer = await User.findById(id);
+    if (!customer) {
+      return next(new AppError('Customer not found', 404));
+    }
+
+    const [bookingStats, vehicles, recentBookings] = await Promise.all([
+      Booking.aggregate([
+        { $match: { customerId: new mongoose.Types.ObjectId(id) } },
+        {
+          $group: {
+            _id: null,
+            total: { $sum: 1 },
+            completed: { $sum: { $cond: [{ $eq: ['$status', 'completed'] }, 1, 0] } },
+            pending: { $sum: { $cond: [{ $eq: ['$status', 'pending'] }, 1, 0] } },
+            cancelled: { $sum: { $cond: [{ $eq: ['$status', 'cancelled'] }, 1, 0] } },
+          },
+        },
+      ]),
+      Vehicle.find({ owner: id }),
+      Booking.find({ customerId: id })
+        .sort({ startAt: -1 })
+        .limit(5)
+        .populate('serviceId', 'name')
+        .populate('vehicleId', 'make model type licensePlate'),
+    ]);
+
+    res.json({
+      success: true,
+      data: {
+        customer,
+        stats: bookingStats[0] || { total: 0, completed: 0, pending: 0, cancelled: 0 },
+        vehicles,
+        recentBookings,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ---------------------------------------------------------------------------
+// GET /api/admin/vehicles  (protect + requireAdmin)
+// ---------------------------------------------------------------------------
+export const getAdminVehicles = async (req, res, next) => {
+  try {
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.min(50, Math.max(1, parseInt(req.query.limit) || 20));
+    const skip = (page - 1) * limit;
+
+    const filter = {};
+    if (req.query.type) filter.type = req.query.type;
+    if (req.query.search) {
+      filter.licensePlate = new RegExp(req.query.search, 'i');
+    }
+
+    const total = await Vehicle.countDocuments(filter);
+    const items = await Vehicle.find(filter)
+      .populate('owner', 'name email phone')
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit);
+
+    res.json({
+      success: true,
+      data: { vehicles: items, total, page, pages: Math.ceil(total / limit) },
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ---------------------------------------------------------------------------
+// GET /api/admin/payments  (protect + requireAdmin)
+// ---------------------------------------------------------------------------
+export const getPayments = async (req, res, next) => {
+  try {
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.min(50, Math.max(1, parseInt(req.query.limit) || 20));
+    const skip = (page - 1) * limit;
+
+    const filter = {};
+    if (req.query.method) filter.method = req.query.method;
+    if (req.query.status) filter.status = req.query.status;
+
+    const total = await Payment.countDocuments(filter);
+    const items = await Payment.find(filter)
+      .populate({
+        path: 'bookingId',
+        select: 'bookingReference serviceNameSnapshot startAt customerId',
+        populate: { path: 'customerId', select: 'name email phone' },
+      })
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit);
+
+    res.json({
+      success: true,
+      data: { payments: items, total, page, pages: Math.ceil(total / limit) },
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ---------------------------------------------------------------------------
+// PATCH /api/admin/payments/:id/collect  (protect + requireAdmin)
+// ---------------------------------------------------------------------------
+export const recordCODCollection = async (req, res, next) => {
+  try {
+    const payment = await Payment.findById(req.params.id);
+    if (!payment) {
+      return next(new AppError('Payment not found', 404));
+    }
+    if (payment.method !== 'cod') {
+      return next(new AppError('Payment is not COD', 400));
+    }
+    if (payment.status !== 'unpaid') {
+      return next(new AppError('Payment already processed', 400));
+    }
+
+    payment.status = 'paid';
+    payment.collectedAt = new Date();
+    payment.collectedBy = req.user._id;
+    await payment.save();
+
+    // Update booking payment status
+    const booking = await Booking.findByIdAndUpdate(
+      payment.bookingId,
+      { paymentStatus: 'paid' },
+      { new: true }
+    );
+
+    // Get customerId
+    const customerId = booking ? booking.customerId : payment.customerId;
+
+    // Create notification
+    await Notification.create({
+      user: customerId,
+      title: 'Payment Collected',
+      body: 'Your COD payment for booking has been collected.',
+      type: 'payment',
+      data: { paymentId: payment._id },
+    });
+
+    await payment.populate({
+      path: 'bookingId',
+      select: 'bookingReference serviceNameSnapshot startAt customerId',
+      populate: { path: 'customerId', select: 'name email phone' },
+    });
+
+    res.json({ success: true, data: payment });
+  } catch (err) {
+    next(err);
+  }
+};
+

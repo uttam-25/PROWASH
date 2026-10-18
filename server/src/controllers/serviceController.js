@@ -6,7 +6,7 @@ import { AppError } from '../middleware/errorHandler.js';
 // ---------------------------------------------------------------------------
 export const getServices = async (req, res, next) => {
   try {
-    const filter = { isActive: true };
+    const filter = req.query.includeInactive === 'true' ? {} : { isActive: true };
     if (req.query.category) {
       filter.category = req.query.category;
     }

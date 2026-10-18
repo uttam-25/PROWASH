@@ -2,13 +2,13 @@ import mongoose from 'mongoose';
 
 const paymentSchema = new mongoose.Schema(
   {
-    booking: {
+    bookingId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Booking',
       required: [true, 'Booking is required'],
       unique: true,
     },
-    customer: {
+    customerId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
       required: [true, 'Customer is required'],
@@ -19,21 +19,40 @@ const paymentSchema = new mongoose.Schema(
     },
     method: {
       type: String,
-      enum: ['cod', 'razorpay'],
+      enum: ['cod', 'online'],
       default: 'cod',
     },
     status: {
       type: String,
-      enum: ['pending', 'paid', 'failed', 'refunded'],
-      default: 'pending',
+      enum: ['unpaid', 'pending', 'paid', 'failed', 'refunded'],
+      default: 'unpaid',
     },
-    razorpayOrderId: {
+    gatewayOrderId: {
       type: String,
     },
-    razorpayPaymentId: {
+    gatewayPaymentId: {
       type: String,
     },
-    paidAt: {
+    gatewaySignature: {
+      type: String,
+    },
+    transactionReference: {
+      type: String,
+    },
+    collectedAt: {
+      type: Date,
+    },
+    collectedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+    },
+    refundAmount: {
+      type: Number,
+    },
+    refundReason: {
+      type: String,
+    },
+    refundedAt: {
       type: Date,
     },
   },

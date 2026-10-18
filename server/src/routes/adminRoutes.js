@@ -1,15 +1,23 @@
 import { Router } from 'express';
 import {
-  getAdminBookings,
-  updateBookingStatus,
   getDashboard,
   getAdminReports,
+  getAdminBookings,
+  updateBookingStatus,
+  getSchedule,
+  updateSchedule,
+  addBlockedPeriod,
+  removeBlockedPeriod,
+  addHoliday,
+  removeHoliday,
+  getCustomers,
+  getCustomerDetails,
+  getAdminVehicles,
+  getPayments,
+  recordCODCollection,
 } from '../controllers/adminController.js';
-import { setSchedule } from '../controllers/availabilityController.js';
-import { getAllVehicles } from '../controllers/vehicleController.js';
 import { createService, updateService, deleteService } from '../controllers/serviceController.js';
 import { getBookingById } from '../controllers/bookingController.js';
-import { getAllPayments, updatePaymentStatus } from '../controllers/paymentController.js';
 import { protect, requireAdmin } from '../middleware/auth.js';
 import { validate, serviceRules } from '../middleware/validate.js';
 
@@ -24,10 +32,19 @@ router.get('/dashboard', protect, requireAdmin, getDashboard);
 router.get('/reports', protect, requireAdmin, getAdminReports);
 
 // Schedule
-router.post('/schedule', protect, requireAdmin, setSchedule);
+router.get('/schedule', protect, requireAdmin, getSchedule);
+router.put('/schedule', protect, requireAdmin, updateSchedule);
+router.post('/schedule/block', protect, requireAdmin, addBlockedPeriod);
+router.delete('/schedule/block/:periodId', protect, requireAdmin, removeBlockedPeriod);
+router.post('/schedule/holiday', protect, requireAdmin, addHoliday);
+router.delete('/schedule/holiday/:holidayId', protect, requireAdmin, removeHoliday);
+
+// Customers
+router.get('/customers', protect, requireAdmin, getCustomers);
+router.get('/customers/:id', protect, requireAdmin, getCustomerDetails);
 
 // Vehicles
-router.get('/vehicles', protect, requireAdmin, getAllVehicles);
+router.get('/vehicles', protect, requireAdmin, getAdminVehicles);
 
 // Services
 router.post('/services', protect, requireAdmin, validate(serviceRules), createService);
@@ -40,7 +57,7 @@ router.get('/bookings/:id', protect, requireAdmin, getBookingById);
 router.patch('/bookings/:id/status', protect, requireAdmin, updateBookingStatus);
 
 // Payments
-router.get('/payments', protect, requireAdmin, getAllPayments);
-router.put('/payments/:id/status', protect, requireAdmin, updatePaymentStatus);
+router.get('/payments', protect, requireAdmin, getPayments);
+router.patch('/payments/:id/collect', protect, requireAdmin, recordCODCollection);
 
 export default router;
