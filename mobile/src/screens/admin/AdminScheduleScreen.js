@@ -21,6 +21,7 @@ import spacing from '../../theme/spacing';
 import typography from '../../theme/typography';
 
 const DAYS_OF_WEEK = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
 function SectionCard({ title, children }) {
   return (
@@ -90,7 +91,13 @@ export default function AdminScheduleScreen() {
     setClosingTime(s.closingTime || '20:00');
     setSlotInterval(String(s.slotIntervalMinutes || 30));
     setMaxConcurrent(String(s.maxConcurrentBookings || 3));
-    setWorkingDays(s.workingDays || [1, 2, 3, 4, 5, 6]);
+    // Server stores full day names (e.g. 'Monday'); convert to numeric indices (0=Sun … 6=Sat)
+    const serverDays = s.workingDays || [];
+    if (serverDays.length > 0 && typeof serverDays[0] === 'string') {
+      setWorkingDays(serverDays.map((n) => DAY_NAMES.indexOf(n)).filter((i) => i >= 0));
+    } else {
+      setWorkingDays(serverDays.length > 0 ? serverDays : [1, 2, 3, 4, 5, 6]);
+    }
     setBreaks(s.breaks || []);
     setBlockedPeriods(s.blockedPeriods || []);
     setHolidays(s.holidays || []);
@@ -174,7 +181,9 @@ export default function AdminScheduleScreen() {
   const handleSaveDays = async () => {
     try {
       setSavingDays(true);
-      await adminService.updateSchedule({ workingDays });
+      // Convert numeric indices back to full day names the server expects
+      const dayNames = workingDays.map((i) => DAY_NAMES[i]).filter(Boolean);
+      await adminService.updateSchedule({ workingDays: dayNames });
       Alert.alert('Saved', 'Working days updated.');
     } catch (err) {
       Alert.alert('Error', err.response?.data?.message || 'Failed to save.');

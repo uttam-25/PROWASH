@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   ScrollView,
   StyleSheet,
+  Alert,
   RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -149,8 +150,8 @@ export default function AdminPaymentsScreen({ navigation }) {
           p._id === collectTarget._id ? { ...p, status: 'paid' } : p
         )
       );
-    } catch {
-      // silently show error via alert would require Alert import — use optimistic update only
+    } catch (err) {
+      Alert.alert('Error', err.response?.data?.message || 'Failed to record collection. Please try again.');
     } finally {
       setCollectTarget(null);
     }
