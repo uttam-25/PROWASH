@@ -3,7 +3,7 @@ import { getReports } from '../controllers/adminController.js';
 import { setSchedule } from '../controllers/availabilityController.js';
 import { getAllVehicles } from '../controllers/vehicleController.js';
 import { createService, updateService, deleteService } from '../controllers/serviceController.js';
-import { getAllBookings, updateBookingStatus } from '../controllers/bookingController.js';
+import { getAllBookings, getBooking, updateBookingStatus } from '../controllers/bookingController.js';
 import { getAllPayments, updatePaymentStatus } from '../controllers/paymentController.js';
 import { protect, requireAdmin } from '../middleware/auth.js';
 import { validate, serviceRules } from '../middleware/validate.js';
@@ -26,8 +26,9 @@ router.post('/services', protect, requireAdmin, validate(serviceRules), createSe
 router.put('/services/:id', protect, requireAdmin, updateService);
 router.delete('/services/:id', protect, requireAdmin, deleteService);
 
-// Bookings
+// Bookings — list must come before :id to avoid route shadowing
 router.get('/bookings', protect, requireAdmin, getAllBookings);
+router.get('/bookings/:id', protect, requireAdmin, getBooking);
 router.put('/bookings/:id/status', protect, requireAdmin, updateBookingStatus);
 
 // Payments

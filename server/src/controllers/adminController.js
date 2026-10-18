@@ -59,8 +59,8 @@ export const getReports = async (req, res, next) => {
         bookingsByStatus,
         totalRevenue,
         todayBookings,
-        monthRevenue,
-        totalActiveCustomers,
+        thisMonthRevenue: monthRevenue,
+        totalCustomers: totalActiveCustomers,
       },
     });
   } catch (err) {

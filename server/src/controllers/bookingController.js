@@ -199,7 +199,7 @@ export const getAllBookings = async (req, res, next) => {
 
     res.json({
       success: true,
-      data: { items, total, page, pages: Math.ceil(total / limit) },
+      data: { bookings: items, total, page, pages: Math.ceil(total / limit) },
     });
   } catch (err) {
     next(err);
