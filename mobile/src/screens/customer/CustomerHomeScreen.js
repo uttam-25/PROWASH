@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -57,14 +57,63 @@ export default function CustomerHomeScreen({ navigation }) {
     return 'Good evening';
   };
 
-  const loadData = useCallback(async () => {
+  // Fetch vehicles and services once on mount
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const [vehicleRes, serviceRes] = await Promise.allSettled([
+          vehicleService.getMyVehicles(),
+          serviceService.getServices(),
+        ]);
+        if (cancelled) return;
+        if (vehicleRes.status === 'fulfilled') {
+          const v = vehicleRes.value;
+          setVehicles(v.vehicles || v.data || []);
+        }
+        if (serviceRes.status === 'fulfilled') {
+          const s = serviceRes.value;
+          setServices(s.services || s.data || []);
+        }
+      } catch {
+        // failures handled by Promise.allSettled
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  // Re-fetch only bookings on every focus event
+  const loadBookings = useCallback(async () => {
+    try {
+      const bookingRes = await bookingService.getMyBookings();
+      setBookings(bookingRes.data?.bookings || bookingRes.bookings || bookingRes.data || []);
+    } catch {
+      // silent — stale bookings remain visible
+    }
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadBookings();
+      notificationService.getNotifications(true)
+        .then((data) => {
+          setUnreadCount(data.data?.unreadCount ?? 0);
+        })
+        .catch(() => {}); // silent — badge is non-critical
+    }, [loadBookings])
+  );
+
+  // Full refresh on pull-to-refresh: re-fetch all three data sources
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
     try {
       const [vehicleRes, bookingRes, serviceRes] = await Promise.allSettled([
         vehicleService.getMyVehicles(),
         bookingService.getMyBookings(),
         serviceService.getServices(),
       ]);
-
       if (vehicleRes.status === 'fulfilled') {
         const v = vehicleRes.value;
         setVehicles(v.vehicles || v.data || []);
@@ -78,29 +127,11 @@ export default function CustomerHomeScreen({ navigation }) {
         setServices(s.services || s.data || []);
       }
     } catch {
-      // Individual failures handled by Promise.allSettled
+      // individual failures handled by Promise.allSettled
     } finally {
-      setLoading(false);
       setRefreshing(false);
     }
   }, []);
-
-  useFocusEffect(
-    useCallback(() => {
-      setLoading(true);
-      loadData();
-      notificationService.getNotifications(true)
-        .then((data) => {
-          setUnreadCount(data.data?.unreadCount ?? 0);
-        })
-        .catch(() => {}); // silent — badge is non-critical
-    }, [loadData])
-  );
-
-  const handleRefresh = () => {
-    setRefreshing(true);
-    loadData();
-  };
 
   if (loading) return <LoadingView message="Loading PROWASH…" />;
 

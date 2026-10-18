@@ -30,13 +30,15 @@ function istHHMMtoUTC(dateString, hhmm) {
 /**
  * Get IST day-of-week name for a dateString 'YYYY-MM-DD'.
  * Returns e.g. 'Monday', 'Tuesday', etc.
+ * Uses a static lookup — no ICU/timezone data required.
  */
+const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 function getISTDayName(dateString) {
-  // Build IST midnight as UTC, then use toLocaleString with IST timezone
   const [year, month, day] = dateString.split('-').map(Number);
-  // IST midnight = UTC midnight - 5h30m (but for day-of-week we need IST noon to be safe)
-  const istNoon = new Date(Date.UTC(year, month - 1, day, 6, 30, 0)); // UTC 06:30 = IST 12:00
-  return istNoon.toLocaleString('en-US', { timeZone: 'Asia/Kolkata', weekday: 'long' });
+  // UTC noon of that date shifted by IST offset — safe cross-midnight
+  const utcNoon = new Date(Date.UTC(year, month - 1, day, 6, 30, 0)); // UTC 06:30 = IST 12:00
+  const istDate = new Date(utcNoon.getTime() + IST_OFFSET_MS);
+  return DAY_NAMES[istDate.getUTCDay()];
 }
 
 /**

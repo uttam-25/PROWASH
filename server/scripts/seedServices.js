@@ -1,11 +1,12 @@
 // Standalone seed script
 // Run with: node scripts/seedServices.js  (from the server/ directory)
 import 'dotenv/config';
+import { pathToFileURL } from 'url';
 import connectDB from '../src/config/db.js';
 import Service from '../src/models/Service.js';
 import Schedule from '../src/models/Schedule.js';
 
-const defaultServices = [
+export const defaultServices = [
   {
     name: 'Car Exterior Wash',
     description: 'Full exterior wash for cars including rinse, soap, and dry.',
@@ -62,31 +63,46 @@ const defaultServices = [
   },
 ];
 
-const seed = async () => {
-  await connectDB();
-
+/**
+ * Seed schedule and services into the database.
+ * Can be called programmatically (e.g. from the dev seed API route).
+ * Does NOT call process.exit — safe to use inside a running server.
+ */
+export async function seedServicesData() {
   // Seed Schedule
   const existingSchedule = await Schedule.findOne({ isActive: true });
-  if (existingSchedule) {
-    console.log('Schedule already exists — skipping.');
-  } else {
+  if (!existingSchedule) {
     await new Schedule({ isActive: true }).save();
-    console.log('Schedule seeded with defaults.');
   }
 
   // Seed Services
   const count = await Service.countDocuments();
   if (count > 0) {
-    console.log(`Services already exist (${count} found) — skipping.`);
-    process.exit(0);
+    return { skipped: true, existing: count };
   }
 
   await Service.insertMany(defaultServices);
-  console.log(`Services seeded: ${defaultServices.length} services created.`);
+  return { seeded: true, count: defaultServices.length };
+}
+
+// Standalone runner — only executes when this file is run directly
+const seed = async () => {
+  await connectDB();
+
+  const result = await seedServicesData();
+
+  if (result.skipped) {
+    console.log(`Services already exist (${result.existing} found) — skipping.`);
+  } else {
+    console.log(`Services seeded: ${result.count} services created.`);
+  }
+
   process.exit(0);
 };
 
-seed().catch((err) => {
-  console.error('Seed failed:', err);
-  process.exit(1);
-});
+if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+  seed().catch((err) => {
+    console.error('Seed failed:', err);
+    process.exit(1);
+  });
+}

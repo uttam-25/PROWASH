@@ -133,8 +133,13 @@ export const verifyPayment = async (req, res, next) => {
 // ---------------------------------------------------------------------------
 export const handleWebhook = async (req, res) => {
   try {
+    const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET || process.env.RAZORPAY_KEY_SECRET;
+    if (!webhookSecret) {
+      return res.status(200).json({ received: true });
+    }
+
     const signature = req.headers['x-razorpay-signature'];
-    const secret = process.env.RAZORPAY_WEBHOOK_SECRET || process.env.RAZORPAY_KEY_SECRET;
+    const secret = webhookSecret;
 
     const expectedSignature = crypto
       .createHmac('sha256', secret || '')

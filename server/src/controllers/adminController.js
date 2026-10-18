@@ -200,8 +200,6 @@ export const getDashboard = async (req, res, next) => {
 // ---------------------------------------------------------------------------
 export const getAdminReports = async (req, res, next) => {
   try {
-    const now = new Date();
-
     // Today IST boundaries
     const istTodayString = new Date(Date.now() + IST_OFFSET_MS).toISOString().slice(0, 10);
     const [ty, tm, td] = istTodayString.split('-').map(Number);
@@ -212,6 +210,9 @@ export const getAdminReports = async (req, res, next) => {
     const monthStartUTC = new Date(Date.UTC(ty, tm - 1, 1, 0, 0, 0) - IST_OFFSET_MS);
     const monthEndUTC = new Date(Date.UTC(ty, tm, 1, 0, 0, 0) - IST_OFFSET_MS);
 
+    // Last-6-months boundary
+    const sixMonthsAgo = new Date(Date.UTC(ty, tm - 7, 1, 0, 0, 0) - IST_OFFSET_MS);
+
     const [
       totalCustomers,
       totalBookings,
@@ -220,32 +221,113 @@ export const getAdminReports = async (req, res, next) => {
       todayAppointments,
       monthRevenueResult,
       recentBookings,
+      vehicleTypeCounts,
+      serviceBookings,
+      monthlyRevenueRaw,
     ] = await Promise.all([
+      // 1. total active customers
       User.countDocuments({ role: 'customer', isActive: true }),
+      // 2. total bookings
       Booking.countDocuments(),
+      // 3. total revenue from completed bookings
       Booking.aggregate([
         { $match: { status: 'completed' } },
         { $group: { _id: null, total: { $sum: '$priceAtBooking' } } },
       ]),
+      // 4. status breakdown
       Booking.aggregate([{ $group: { _id: '$status', count: { $sum: 1 } } }]),
+      // 5. today appointments
       Booking.countDocuments({ startAt: { $gte: todayStartUTC, $lt: todayEndUTC } }),
+      // 6. this month revenue
       Booking.aggregate([
         { $match: { status: 'completed', startAt: { $gte: monthStartUTC, $lt: monthEndUTC } } },
         { $group: { _id: null, total: { $sum: '$priceAtBooking' } } },
       ]),
+      // 7. recent bookings (last 10)
       Booking.find()
         .sort({ createdAt: -1 })
         .limit(10)
         .populate('customerId', 'name email')
-        .populate('serviceId', 'name'),
+        .populate('serviceId', 'name')
+        .populate('vehicleId', 'make model type licensePlate'),
+      // 8. bookings by vehicle type (via Vehicle lookup — vehicleType lives on Vehicle model)
+      Booking.aggregate([
+        {
+          $lookup: {
+            from: 'vehicles',
+            localField: 'vehicleId',
+            foreignField: '_id',
+            as: 'vehicle',
+          },
+        },
+        { $unwind: { path: '$vehicle', preserveNullAndEmpty: false } },
+        { $group: { _id: '$vehicle.type', count: { $sum: 1 } } },
+      ]),
+      // 9. bookings by service (with name + revenue)
+      Booking.aggregate([
+        {
+          $lookup: {
+            from: 'services',
+            localField: 'serviceId',
+            foreignField: '_id',
+            as: 'service',
+          },
+        },
+        { $unwind: { path: '$service', preserveNullAndEmpty: false } },
+        {
+          $group: {
+            _id: '$serviceId',
+            serviceName: { $first: '$service.name' },
+            count: { $sum: 1 },
+            revenue: { $sum: '$priceAtBooking' },
+          },
+        },
+        { $sort: { count: -1 } },
+        { $limit: 10 },
+      ]),
+      // 10. monthly revenue (last 6 months, completed bookings)
+      Booking.aggregate([
+        { $match: { status: 'completed', startAt: { $gte: sixMonthsAgo } } },
+        {
+          $group: {
+            _id: {
+              year: { $year: { date: '$startAt', timezone: '+05:30' } },
+              month: { $month: { date: '$startAt', timezone: '+05:30' } },
+            },
+            revenue: { $sum: '$priceAtBooking' },
+            bookings: { $sum: 1 },
+          },
+        },
+        { $sort: { '_id.year': 1, '_id.month': 1 } },
+      ]),
     ]);
 
     const totalRevenue = revenueResult[0]?.total || 0;
     const thisMonthRevenue = monthRevenueResult[0]?.total || 0;
 
-    const bookingsByStatus = {};
-    statusCounts.forEach(({ _id, count }) => {
-      bookingsByStatus[_id] = count;
+    // Build flat status counts
+    const statusMap = {};
+    statusCounts.forEach(({ _id, count }) => { statusMap[_id] = count; });
+
+    // Build vehicle type map { Car: N, Bike: N, Scooty: N }
+    const bookingsByVehicleType = { Car: 0, Bike: 0, Scooty: 0 };
+    vehicleTypeCounts.forEach(({ _id, count }) => {
+      if (_id && Object.prototype.hasOwnProperty.call(bookingsByVehicleType, _id)) {
+        bookingsByVehicleType[_id] = count;
+      }
+    });
+
+    // Build service list
+    const bookingsByService = serviceBookings.map(({ serviceName, count, revenue }) => ({
+      serviceName,
+      count,
+      revenue,
+    }));
+
+    // Format monthly revenue as YYYY-MM strings (zero-padded month)
+    const monthlyRevenue = monthlyRevenueRaw.map(({ _id, revenue, bookings }) => {
+      const m = String(_id.month).padStart(2, '0');
+      return { month: `${_id.year}-${m}`, revenue, bookings };
     });
 
     res.json({
@@ -254,10 +336,18 @@ export const getAdminReports = async (req, res, next) => {
         totalCustomers,
         totalBookings,
         totalRevenue,
-        bookingsByStatus,
-        todayAppointments,
         thisMonthRevenue,
+        completedBookings: statusMap.completed || 0,
+        cancelledBookings: statusMap.cancelled || 0,
+        pendingBookings: statusMap.pending || 0,
+        confirmedBookings: statusMap.confirmed || 0,
+        inProgressBookings: statusMap.in_progress || 0,
+        todayAppointments,
+        bookingsByStatus: statusMap, // kept for backward compat
+        bookingsByVehicleType,
+        bookingsByService,
         recentBookings,
+        monthlyRevenue,
       },
     });
   } catch (err) {
@@ -589,6 +679,16 @@ export const recordCODCollection = async (req, res, next) => {
     payment.collectedAt = new Date();
     payment.collectedBy = req.user._id;
     await payment.save();
+
+    if (!payment.bookingId) {
+      // No associated booking — skip notification, still return updated payment
+      await payment.populate({
+        path: 'bookingId',
+        select: 'bookingReference serviceNameSnapshot startAt customerId',
+        populate: { path: 'customerId', select: 'name email phone' },
+      });
+      return res.json({ success: true, data: payment });
+    }
 
     // Update booking payment status
     const booking = await Booking.findByIdAndUpdate(

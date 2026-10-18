@@ -60,4 +60,17 @@ router.patch('/bookings/:id/status', protect, requireAdmin, updateBookingStatus)
 router.get('/payments', protect, requireAdmin, getPayments);
 router.patch('/payments/:id/collect', protect, requireAdmin, recordCODCollection);
 
+// Dev-only: seed services
+if (process.env.NODE_ENV === 'development') {
+  router.post('/seed/services', protect, requireAdmin, async (req, res, next) => {
+    try {
+      const { seedServicesData } = await import('../../scripts/seedServices.js');
+      const result = await seedServicesData();
+      res.json({ success: true, data: result });
+    } catch (err) {
+      next(err);
+    }
+  });
+}
+
 export default router;
