@@ -2,20 +2,29 @@ import Booking from '../models/Booking.js';
 import Vehicle from '../models/Vehicle.js';
 import Service from '../models/Service.js';
 import Payment from '../models/Payment.js';
-import Schedule from '../models/Schedule.js';
-import { getAvailableSlots, updateSlotAvailability } from '../services/availabilityService.js';
-import { sendPushNotification } from '../services/notificationService.js';
+import Notification from '../models/Notification.js';
+import { getAvailableSlots } from '../services/availabilityService.js';
 import { AppError } from '../middleware/errorHandler.js';
 
-// Helper — format date to YYYY-MM-DD string
-const toDateString = (date) => new Date(date).toISOString().slice(0, 10);
+// Helper: get IST date string 'YYYY-MM-DD' from a Date or ISO string
+function toISTDateString(dateInput) {
+  return new Date(new Date(dateInput).getTime() + 19800000).toISOString().slice(0, 10);
+}
 
 // ---------------------------------------------------------------------------
 // POST /api/bookings  (protect)
 // ---------------------------------------------------------------------------
 export const createBooking = async (req, res, next) => {
   try {
-    const { vehicleId, serviceId, scheduledDate, scheduledTime, notes, paymentMethod } = req.body;
+    const { vehicleId, serviceId, startAt: startAtRaw, paymentMethod, notes } = req.body;
+
+    // Basic validation
+    if (!vehicleId || !serviceId || !startAtRaw || !paymentMethod) {
+      return next(new AppError('vehicleId, serviceId, startAt and paymentMethod are required', 400));
+    }
+    if (!['cod', 'online'].includes(paymentMethod)) {
+      return next(new AppError("paymentMethod must be 'cod' or 'online'", 400));
+    }
 
     // Verify vehicle ownership
     const vehicle = await Vehicle.findById(vehicleId);
@@ -32,54 +41,67 @@ export const createBooking = async (req, res, next) => {
       return next(new AppError('Service not found or is no longer available', 404));
     }
 
-    // Check slot availability
-    const dateStr = toDateString(scheduledDate);
-    const slots = await getAvailableSlots(dateStr);
-    const slot = slots.find((s) => s.time === scheduledTime);
-    if (!slot) {
-      return next(new AppError('The requested time slot does not exist', 400));
+    const startAt = new Date(startAtRaw);
+    if (isNaN(startAt.getTime())) {
+      return next(new AppError('startAt must be a valid ISO date string', 400));
     }
-    if (!slot.available) {
-      return next(new AppError('The requested time slot is not available', 400));
+
+    const endAt = new Date(startAt.getTime() + service.duration * 60000);
+
+    // Server-side availability re-check
+    const dateString = toISTDateString(startAt);
+    const slots = await getAvailableSlots(serviceId, dateString);
+    const slotMatch = slots.find((s) => s.startAt === startAt.toISOString());
+
+    if (!slotMatch) {
+      return res.status(409).json({
+        success: false,
+        message: 'Slot no longer available',
+        alternatives: slots.slice(0, 3),
+      });
     }
 
     // Create booking
     const booking = await Booking.create({
-      customer: req.user._id,
-      vehicle: vehicleId,
-      service: serviceId,
-      scheduledDate: new Date(`${dateStr}T00:00:00.000Z`),
-      scheduledTime,
-      totalAmount: service.price,
+      customerId: req.user._id,
+      vehicleId,
+      serviceId,
+      serviceNameSnapshot: service.name,
+      priceAtBooking: service.price,
+      startAt,
+      endAt,
+      paymentMethod,
       notes,
+      status: 'pending',
+      paymentStatus: 'unpaid',
+      statusHistory: [
+        { status: 'pending', changedAt: new Date(), changedBy: req.user._id },
+      ],
     });
 
-    // Create pending payment
-    const method = paymentMethod === 'razorpay' ? 'razorpay' : 'cod';
+    // Create payment record
+    const paymentMethod_mapped = paymentMethod === 'online' ? 'razorpay' : 'cod';
     await Payment.create({
       booking: booking._id,
       customer: req.user._id,
       amount: service.price,
-      method,
+      method: paymentMethod_mapped,
     });
 
-    // Increment bookedCount on Schedule
-    await Schedule.updateOne(
-      { date: new Date(`${dateStr}T00:00:00.000Z`) },
-      { $inc: { bookedCount: 1 } }
-    );
+    // Create notification
+    await Notification.create({
+      user: req.user._id,
+      title: 'Booking Received',
+      body: `Your ${service.name} appointment is pending confirmation.`,
+      type: 'booking',
+      data: { bookingId: booking._id },
+    });
 
-    // Notify customer
-    await sendPushNotification(
-      req.user._id,
-      'Booking Confirmed',
-      `Your ${service.name} booking for ${dateStr} at ${scheduledTime} is pending confirmation.`,
-      'booking'
-    );
-
+    // Populate and return
     const populated = await Booking.findById(booking._id)
-      .populate('vehicle', 'type make model licensePlate color')
-      .populate('service', 'name category price duration');
+      .populate('customerId', 'name email phone')
+      .populate('vehicleId', 'make model licensePlate type color')
+      .populate('serviceId', 'name category price duration');
 
     res.status(201).json({ success: true, data: populated });
   } catch (err) {
@@ -92,32 +114,50 @@ export const createBooking = async (req, res, next) => {
 // ---------------------------------------------------------------------------
 export const getMyBookings = async (req, res, next) => {
   try {
-    const bookings = await Booking.find({ customer: req.user._id })
-      .populate('vehicle', 'type make model licensePlate color')
-      .populate('service', 'name category price duration imageUrl')
-      .sort({ createdAt: -1 });
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.min(50, Math.max(1, parseInt(req.query.limit) || 20));
+    const skip = (page - 1) * limit;
 
-    res.json({ success: true, data: bookings });
+    const filter = { customerId: req.user._id };
+    if (req.query.status) filter.status = req.query.status;
+
+    const total = await Booking.countDocuments(filter);
+    const bookings = await Booking.find(filter)
+      .populate('vehicleId', 'make model licensePlate type color')
+      .populate('serviceId', 'name category price duration imageUrl')
+      .sort({ startAt: -1 })
+      .skip(skip)
+      .limit(limit);
+
+    res.json({
+      success: true,
+      data: {
+        bookings,
+        total,
+        page,
+        pages: Math.ceil(total / limit),
+      },
+    });
   } catch (err) {
     next(err);
   }
 };
 
 // ---------------------------------------------------------------------------
-// GET /api/bookings/:id  (protect, customer ownership check)
+// GET /api/bookings/:id  (protect)
 // ---------------------------------------------------------------------------
-export const getBooking = async (req, res, next) => {
+export const getBookingById = async (req, res, next) => {
   try {
     const booking = await Booking.findById(req.params.id)
-      .populate('vehicle', 'type make model licensePlate color photo')
-      .populate('service', 'name category price duration imageUrl description');
+      .populate('customerId', 'name email phone')
+      .populate('vehicleId', 'type make model licensePlate color photo')
+      .populate('serviceId', 'name category price duration imageUrl description');
 
     if (!booking) {
       return next(new AppError('Booking not found', 404));
     }
 
-    // Admins can see any booking; customers only their own
-    if (req.user.role !== 'admin' && booking.customer.toString() !== req.user._id.toString()) {
+    if (req.user.role !== 'admin' && booking.customerId.toString() !== req.user._id.toString()) {
       return next(new AppError('Not authorised to view this booking', 403));
     }
 
@@ -127,8 +167,11 @@ export const getBooking = async (req, res, next) => {
   }
 };
 
+// Keep old name as alias for admin routes that reference it
+export const getBooking = getBookingById;
+
 // ---------------------------------------------------------------------------
-// PUT /api/bookings/:id/cancel  (protect)
+// PATCH /api/bookings/:id/cancel  (protect)
 // ---------------------------------------------------------------------------
 export const cancelBooking = async (req, res, next) => {
   try {
@@ -137,7 +180,7 @@ export const cancelBooking = async (req, res, next) => {
       return next(new AppError('Booking not found', 404));
     }
 
-    if (booking.customer.toString() !== req.user._id.toString()) {
+    if (booking.customerId.toString() !== req.user._id.toString()) {
       return next(new AppError('Not authorised to cancel this booking', 403));
     }
 
@@ -145,24 +188,31 @@ export const cancelBooking = async (req, res, next) => {
       return next(new AppError('Only pending or confirmed bookings can be cancelled', 400));
     }
 
-    const { cancelReason } = req.body;
-    if (!cancelReason || !cancelReason.trim()) {
+    const reason = (req.body.reason || req.body.cancellationReason || '').trim();
+    if (!reason) {
       return next(new AppError('A cancellation reason is required', 400));
     }
 
     booking.status = 'cancelled';
-    booking.cancelReason = cancelReason.trim();
+    booking.cancelledAt = new Date();
+    booking.cancelledBy = 'customer';
+    booking.cancellationReason = reason;
+    booking.statusHistory.push({
+      status: 'cancelled',
+      changedAt: new Date(),
+      changedBy: req.user._id,
+      note: reason,
+    });
     await booking.save();
 
-    // Decrement bookedCount
-    const dateStr = toDateString(booking.scheduledDate);
-    await Schedule.updateOne(
-      { date: new Date(`${dateStr}T00:00:00.000Z`) },
-      { $inc: { bookedCount: -1 } }
-    );
-
-    // Re-open the slot
-    await updateSlotAvailability(dateStr, booking.scheduledTime, true);
+    // Notify customer
+    await Notification.create({
+      user: req.user._id,
+      title: 'Booking Cancelled',
+      body: `Your booking ${booking.bookingReference} has been cancelled.`,
+      type: 'booking',
+      data: { bookingId: booking._id },
+    });
 
     res.json({ success: true, data: booking });
   } catch (err) {
@@ -171,71 +221,70 @@ export const cancelBooking = async (req, res, next) => {
 };
 
 // ---------------------------------------------------------------------------
-// GET /api/admin/bookings  (protect + requireAdmin, paginated)
+// PATCH /api/bookings/:id/reschedule  (protect)
 // ---------------------------------------------------------------------------
-export const getAllBookings = async (req, res, next) => {
+export const rescheduleBooking = async (req, res, next) => {
   try {
-    const page = Math.max(1, parseInt(req.query.page) || 1);
-    const limit = Math.min(50, Math.max(1, parseInt(req.query.limit) || 20));
-    const skip = (page - 1) * limit;
-
-    const filter = {};
-    if (req.query.status) filter.status = req.query.status;
-    if (req.query.date) {
-      const dateStr = req.query.date;
-      const start = new Date(`${dateStr}T00:00:00.000Z`);
-      const end = new Date(`${dateStr}T23:59:59.999Z`);
-      filter.scheduledDate = { $gte: start, $lte: end };
-    }
-
-    const total = await Booking.countDocuments(filter);
-    const items = await Booking.find(filter)
-      .populate('customer', 'name email phone')
-      .populate('vehicle', 'type make model licensePlate color')
-      .populate('service', 'name category price duration')
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(limit);
-
-    res.json({
-      success: true,
-      data: { bookings: items, total, page, pages: Math.ceil(total / limit) },
-    });
-  } catch (err) {
-    next(err);
-  }
-};
-
-// ---------------------------------------------------------------------------
-// PUT /api/admin/bookings/:id/status  (protect + requireAdmin)
-// ---------------------------------------------------------------------------
-export const updateBookingStatus = async (req, res, next) => {
-  try {
-    const { status } = req.body;
-    const validStatuses = ['pending', 'confirmed', 'in_progress', 'completed', 'cancelled'];
-
-    if (!status || !validStatuses.includes(status)) {
-      return next(new AppError(`Status must be one of: ${validStatuses.join(', ')}`, 400));
-    }
-
-    const booking = await Booking.findById(req.params.id)
-      .populate('customer', 'name email')
-      .populate('service', 'name');
-
+    const booking = await Booking.findById(req.params.id);
     if (!booking) {
       return next(new AppError('Booking not found', 404));
     }
 
-    booking.status = status;
+    if (booking.customerId.toString() !== req.user._id.toString()) {
+      return next(new AppError('Not authorised to reschedule this booking', 403));
+    }
+
+    if (!['pending', 'confirmed'].includes(booking.status)) {
+      return next(new AppError('Only pending or confirmed bookings can be rescheduled', 400));
+    }
+
+    const newStartAtRaw = req.body.newStartAt || req.body.startAt;
+    if (!newStartAtRaw) {
+      return next(new AppError('newStartAt is required', 400));
+    }
+
+    const newStartAt = new Date(newStartAtRaw);
+    if (isNaN(newStartAt.getTime())) {
+      return next(new AppError('newStartAt must be a valid ISO date string', 400));
+    }
+
+    const service = await Service.findById(booking.serviceId);
+    if (!service) {
+      return next(new AppError('Service not found', 404));
+    }
+
+    const newEndAt = new Date(newStartAt.getTime() + service.duration * 60000);
+    const dateString = toISTDateString(newStartAt);
+    const slots = await getAvailableSlots(booking.serviceId.toString(), dateString);
+    const slotMatch = slots.find((s) => s.startAt === newStartAt.toISOString());
+
+    if (!slotMatch) {
+      return res.status(409).json({
+        success: false,
+        message: 'Slot no longer available',
+        alternatives: slots.slice(0, 3),
+      });
+    }
+
+    booking.startAt = newStartAt;
+    booking.endAt = newEndAt;
+    booking.status = 'rescheduled';
+    booking.statusHistory.push({
+      status: 'rescheduled',
+      changedAt: new Date(),
+      changedBy: req.user._id,
+      note: `Rescheduled to ${newStartAt.toISOString()}`,
+    });
     await booking.save();
 
-    // Notify customer of status change
-    await sendPushNotification(
-      booking.customer._id,
-      'Booking Update',
-      `Your booking for ${booking.service?.name || 'service'} is now ${status.replace('_', ' ')}.`,
-      'booking'
-    );
+    // Notify customer
+    await Notification.create({
+      user: req.user._id,
+      title: 'Booking Rescheduled',
+      body: `Your booking ${booking.bookingReference} has been rescheduled.`,
+      type: 'booking',
+      data: { bookingId: booking._id },
+    });
 
     res.json({ success: true, data: booking });
   } catch (err) {

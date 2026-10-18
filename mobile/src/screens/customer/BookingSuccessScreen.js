@@ -1,87 +1,203 @@
-import React from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
   StyleSheet,
+  Animated,
+  TouchableOpacity,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import * as Clipboard from 'expo-clipboard';
 import AppButton from '../../components/AppButton';
 import colors from '../../theme/colors';
 import spacing from '../../theme/spacing';
 import typography from '../../theme/typography';
 
-function formatDate(dateStr) {
-  if (!dateStr) return '—';
-  return new Date(dateStr + 'T00:00:00').toLocaleDateString('en-IN', {
+function formatDateTime(isoString) {
+  if (!isoString) return '—';
+  const d = new Date(isoString);
+  const date = d.toLocaleDateString('en-IN', {
     weekday: 'long',
     day: 'numeric',
     month: 'long',
     year: 'numeric',
   });
+  const time = d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+  return `${date} at ${time}`;
 }
 
 export default function BookingSuccessScreen({ route, navigation }) {
-  const { bookingId, date, time, amount } = route.params || {};
+  const booking = route.params?.booking || {};
+  const vehicle = booking.vehicleId || booking.vehicle || {};
+  const service = booking.serviceId || booking.service || {};
+
+  const scaleAnim = useRef(new Animated.Value(0)).current;
+  const [countdown, setCountdown] = useState(10);
+  const [copied, setCopied] = useState(false);
+
+  // Animate checkmark in
+  useEffect(() => {
+    Animated.spring(scaleAnim, {
+      toValue: 1,
+      friction: 5,
+      tension: 80,
+      useNativeDriver: true,
+    }).start();
+  }, [scaleAnim]);
+
+  // Disable back gesture
+  useEffect(() => {
+    navigation.setOptions({ gestureEnabled: false, headerBackVisible: false });
+  }, [navigation]);
+
+  // 10 second countdown then navigate home
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setCountdown((c) => {
+        if (c <= 1) {
+          clearInterval(interval);
+          navigation.navigate('HomeTab');
+          return 0;
+        }
+        return c - 1;
+      });
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [navigation]);
+
+  const handleCopyRef = async () => {
+    if (booking.bookingReference) {
+      await Clipboard.setStringAsync(booking.bookingReference);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
+  const handleViewDetails = () => {
+    navigation.navigate('BookingsTab', {
+      screen: 'BookingDetails',
+      params: { bookingId: booking._id },
+    });
+  };
+
+  const handleGoHome = () => {
+    navigation.navigate('HomeTab');
+  };
+
+  const vehicleLabel = [vehicle.make, vehicle.model]
+    .filter(Boolean)
+    .join(' ');
+  const plateLabel = vehicle.licensePlate || '';
+  const vehicleSummary = [vehicleLabel, plateLabel].filter(Boolean).join(' · ');
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
       <View style={styles.container}>
-        {/* Success icon */}
-        <View style={styles.iconCircle}>
+        {/* Animated checkmark */}
+        <Animated.View style={[styles.iconCircle, { transform: [{ scale: scaleAnim }] }]}>
           <Ionicons name="checkmark-circle" size={80} color={colors.success} />
-        </View>
+        </Animated.View>
 
         <Text style={styles.heading}>Booking Confirmed!</Text>
         <Text style={styles.subtitle}>Your wash has been scheduled. We'll see you soon!</Text>
 
-        {/* Booking details card */}
+        {/* Booking reference */}
+        {booking.bookingReference ? (
+          <TouchableOpacity
+            style={styles.refRow}
+            onPress={handleCopyRef}
+            accessibilityRole="button"
+            accessibilityLabel="Copy booking reference"
+          >
+            <Text style={styles.refText}>{booking.bookingReference}</Text>
+            <Ionicons
+              name={copied ? 'checkmark-outline' : 'copy-outline'}
+              size={18}
+              color={colors.ocean}
+            />
+            {copied ? <Text style={styles.copiedText}>Copied!</Text> : null}
+          </TouchableOpacity>
+        ) : null}
+
+        {/* Details card */}
         <View style={styles.detailCard}>
-          {bookingId ? (
-            <View style={styles.detailRow}>
-              <Text style={styles.detailLabel}>Booking ID</Text>
-              <Text style={styles.detailValue} numberOfLines={1}>#{bookingId.slice(-8).toUpperCase()}</Text>
-            </View>
+          {vehicleSummary ? (
+            <DetailRow label="Vehicle" value={vehicleSummary} />
           ) : null}
-          {date ? (
-            <View style={styles.detailRow}>
-              <Text style={styles.detailLabel}>Date</Text>
-              <Text style={styles.detailValue}>{formatDate(date)}</Text>
-            </View>
+          {service.name ? (
+            <DetailRow label="Service" value={service.name} />
           ) : null}
-          {time ? (
-            <View style={styles.detailRow}>
-              <Text style={styles.detailLabel}>Time</Text>
-              <Text style={styles.detailValue}>{time}</Text>
-            </View>
+          {booking.startAt ? (
+            <DetailRow label="Appointment" value={formatDateTime(booking.startAt)} />
           ) : null}
-          {amount ? (
-            <View style={styles.detailRow}>
-              <Text style={styles.detailLabel}>Amount</Text>
-              <Text style={[styles.detailValue, styles.amountText]}>₹{amount}</Text>
-            </View>
+          {booking.priceAtBooking != null ? (
+            <DetailRow label="Amount" value={`₹${booking.priceAtBooking}`} isHighlight />
           ) : null}
+          <DetailRow
+            label="Payment"
+            value={
+              booking.paymentMethod === 'cod'
+                ? 'Pay cash at the time of service'
+                : 'Online payment required'
+            }
+          />
         </View>
 
+        {/* Countdown */}
+        <Text style={styles.countdown}>
+          Auto-redirecting to Home in {countdown}s…
+        </Text>
+
         {/* Actions */}
-        <View style={styles.actions}>
-          <AppButton
-            title="View My Bookings"
-            onPress={() => navigation.navigate('BookingsTab')}
-            size="lg"
-            style={styles.primaryBtn}
-          />
-          <AppButton
-            title="Go Home"
-            onPress={() => navigation.navigate('HomeTab')}
-            variant="ghost"
-            size="lg"
-          />
-        </View>
+        <AppButton
+          title="View Booking Details"
+          onPress={handleViewDetails}
+          size="lg"
+          style={styles.primaryBtn}
+        />
+        <AppButton
+          title="Go to Home"
+          onPress={handleGoHome}
+          variant="ghost"
+          size="lg"
+        />
       </View>
     </SafeAreaView>
   );
 }
+
+function DetailRow({ label, value, isHighlight }) {
+  return (
+    <View style={detailStyles.row}>
+      <Text style={detailStyles.label}>{label}</Text>
+      <Text style={[detailStyles.value, isHighlight && detailStyles.highlight]}>{value}</Text>
+    </View>
+  );
+}
+
+const detailStyles = StyleSheet.create({
+  row: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    paddingVertical: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  label: {
+    ...typography.makeTextStyle('sm', 'regular', colors.textSecondary),
+    flex: 1,
+  },
+  value: {
+    ...typography.makeTextStyle('sm', 'semibold', colors.textPrimary),
+    flex: 2,
+    textAlign: 'right',
+  },
+  highlight: {
+    color: colors.ocean,
+  },
+});
 
 const styles = StyleSheet.create({
   safe: {
@@ -105,45 +221,46 @@ const styles = StyleSheet.create({
   subtitle: {
     ...typography.makeTextStyle('md', 'regular', colors.textSecondary),
     textAlign: 'center',
-    marginBottom: spacing.xl,
+    marginBottom: spacing.md,
     maxWidth: 280,
+  },
+  refRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginBottom: spacing.lg,
+    backgroundColor: colors.white,
+    borderRadius: spacing.borderRadius.sm,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  refText: {
+    ...typography.makeTextStyle('md', 'bold', colors.textPrimary),
+    fontFamily: 'monospace',
+  },
+  copiedText: {
+    ...typography.makeTextStyle('xs', 'regular', colors.success),
   },
   detailCard: {
     backgroundColor: colors.white,
     borderRadius: spacing.borderRadius.md,
-    padding: spacing.lg,
+    padding: spacing.md,
     width: '100%',
-    marginBottom: spacing.xl,
+    marginBottom: spacing.md,
     elevation: 2,
     shadowColor: colors.black,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.08,
     shadowRadius: 6,
   },
-  detailRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    paddingVertical: spacing.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  detailLabel: {
-    ...typography.makeTextStyle('sm', 'regular', colors.textSecondary),
-  },
-  detailValue: {
-    ...typography.makeTextStyle('sm', 'semibold', colors.textPrimary),
-    flex: 1,
-    textAlign: 'right',
-  },
-  amountText: {
-    color: colors.ocean,
-  },
-  actions: {
-    width: '100%',
-    gap: spacing.sm,
+  countdown: {
+    ...typography.makeTextStyle('xs', 'regular', colors.textSecondary),
+    marginBottom: spacing.md,
   },
   primaryBtn: {
+    width: '100%',
     marginBottom: spacing.sm,
   },
 });

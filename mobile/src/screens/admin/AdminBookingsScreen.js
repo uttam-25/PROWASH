@@ -25,6 +25,7 @@ const STATUS_FILTERS = [
   { label: 'In Progress', value: 'in_progress' },
   { label: 'Completed', value: 'completed' },
   { label: 'Cancelled', value: 'cancelled' },
+  { label: 'Rejected', value: 'rejected' },
 ];
 
 export default function AdminBookingsScreen({ navigation }) {

@@ -1,9 +1,14 @@
 import { Router } from 'express';
-import { getReports } from '../controllers/adminController.js';
+import {
+  getAdminBookings,
+  updateBookingStatus,
+  getDashboard,
+  getAdminReports,
+} from '../controllers/adminController.js';
 import { setSchedule } from '../controllers/availabilityController.js';
 import { getAllVehicles } from '../controllers/vehicleController.js';
 import { createService, updateService, deleteService } from '../controllers/serviceController.js';
-import { getAllBookings, getBooking, updateBookingStatus } from '../controllers/bookingController.js';
+import { getBookingById } from '../controllers/bookingController.js';
 import { getAllPayments, updatePaymentStatus } from '../controllers/paymentController.js';
 import { protect, requireAdmin } from '../middleware/auth.js';
 import { validate, serviceRules } from '../middleware/validate.js';
@@ -12,8 +17,11 @@ const router = Router();
 
 // All routes mounted at /api/admin
 
+// Dashboard
+router.get('/dashboard', protect, requireAdmin, getDashboard);
+
 // Reports
-router.get('/reports', protect, requireAdmin, getReports);
+router.get('/reports', protect, requireAdmin, getAdminReports);
 
 // Schedule
 router.post('/schedule', protect, requireAdmin, setSchedule);
@@ -27,9 +35,9 @@ router.put('/services/:id', protect, requireAdmin, updateService);
 router.delete('/services/:id', protect, requireAdmin, deleteService);
 
 // Bookings — list must come before :id to avoid route shadowing
-router.get('/bookings', protect, requireAdmin, getAllBookings);
-router.get('/bookings/:id', protect, requireAdmin, getBooking);
-router.put('/bookings/:id/status', protect, requireAdmin, updateBookingStatus);
+router.get('/bookings', protect, requireAdmin, getAdminBookings);
+router.get('/bookings/:id', protect, requireAdmin, getBookingById);
+router.patch('/bookings/:id/status', protect, requireAdmin, updateBookingStatus);
 
 // Payments
 router.get('/payments', protect, requireAdmin, getAllPayments);

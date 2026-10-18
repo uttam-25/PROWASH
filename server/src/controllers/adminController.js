@@ -1,69 +1,256 @@
 import Booking from '../models/Booking.js';
 import Payment from '../models/Payment.js';
 import User from '../models/User.js';
+import Service from '../models/Service.js';
+import Notification from '../models/Notification.js';
 import { AppError } from '../middleware/errorHandler.js';
 
+// IST offset in ms
+const IST_OFFSET_MS = 19800000;
+
 // ---------------------------------------------------------------------------
-// GET /api/admin/reports  (protect + requireAdmin)
+// GET /api/admin/bookings  (protect + requireAdmin)
 // ---------------------------------------------------------------------------
-export const getReports = async (req, res, next) => {
+export const getAdminBookings = async (req, res, next) => {
+  try {
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.min(50, Math.max(1, parseInt(req.query.limit) || 20));
+    const skip = (page - 1) * limit;
+
+    const filter = {};
+
+    if (req.query.status) filter.status = req.query.status;
+
+    if (req.query.date) {
+      const dateStr = req.query.date;
+      const [year, month, day] = dateStr.split('-').map(Number);
+      // IST day boundaries as UTC
+      const dayStartUTC = new Date(Date.UTC(year, month - 1, day, 0, 0, 0) - IST_OFFSET_MS);
+      const dayEndUTC = new Date(Date.UTC(year, month - 1, day + 1, 0, 0, 0) - IST_OFFSET_MS);
+      filter.startAt = { $gte: dayStartUTC, $lt: dayEndUTC };
+    }
+
+    if (req.query.vehicleType) {
+      const Vehicle = (await import('../models/Vehicle.js')).default;
+      const vehicleIds = await Vehicle.find({ type: req.query.vehicleType }).distinct('_id');
+      filter.vehicleId = { $in: vehicleIds };
+    }
+
+    if (req.query.search) {
+      const searchRegex = new RegExp(req.query.search, 'i');
+      const matchingUsers = await User.find({ name: searchRegex }).distinct('_id');
+      filter.$or = [
+        { bookingReference: searchRegex },
+        { customerId: { $in: matchingUsers } },
+      ];
+    }
+
+    const total = await Booking.countDocuments(filter);
+    const bookings = await Booking.find(filter)
+      .populate('customerId', 'name email phone')
+      .populate('vehicleId', 'make model licensePlate type color')
+      .populate('serviceId', 'name category price duration')
+      .sort({ startAt: -1 })
+      .skip(skip)
+      .limit(limit);
+
+    res.json({
+      success: true,
+      data: { bookings, total, page, pages: Math.ceil(total / limit) },
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ---------------------------------------------------------------------------
+// PATCH /api/admin/bookings/:id/status  (protect + requireAdmin)
+// ---------------------------------------------------------------------------
+const ALLOWED_TRANSITIONS = {
+  pending: ['confirmed', 'rejected', 'cancelled'],
+  confirmed: ['in_progress', 'cancelled', 'rescheduled'],
+  in_progress: ['completed'],
+  rescheduled: ['confirmed', 'cancelled'],
+  completed: [],
+  cancelled: [],
+  rejected: [],
+};
+
+export const updateBookingStatus = async (req, res, next) => {
+  try {
+    const { status, note } = req.body;
+    if (!status) {
+      return next(new AppError('status is required', 400));
+    }
+
+    const booking = await Booking.findById(req.params.id);
+    if (!booking) {
+      return next(new AppError('Booking not found', 404));
+    }
+
+    const allowed = ALLOWED_TRANSITIONS[booking.status] || [];
+    if (!allowed.includes(status)) {
+      return next(
+        new AppError(
+          `Cannot transition from '${booking.status}' to '${status}'. Valid transitions: [${allowed.join(', ')}]`,
+          400
+        )
+      );
+    }
+
+    booking.status = status;
+    booking.statusHistory.push({
+      status,
+      changedAt: new Date(),
+      changedBy: req.user._id,
+      note: note || '',
+    });
+
+    if (status === 'cancelled') {
+      booking.cancelledAt = new Date();
+      booking.cancelledBy = 'admin';
+      booking.cancellationReason = note || '';
+    }
+
+    await booking.save();
+
+    // Notify customer
+    await Notification.create({
+      user: booking.customerId,
+      title: 'Booking Update',
+      body: `Your booking ${booking.bookingReference} status is now: ${status.replace(/_/g, ' ')}.`,
+      type: 'booking',
+      data: { bookingId: booking._id },
+    });
+
+    await booking.populate('customerId', 'name email phone');
+    await booking.populate('vehicleId', 'make model licensePlate type');
+    await booking.populate('serviceId', 'name category price duration');
+
+    res.json({ success: true, data: booking });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ---------------------------------------------------------------------------
+// GET /api/admin/dashboard  (protect + requireAdmin)
+// ---------------------------------------------------------------------------
+export const getDashboard = async (req, res, next) => {
   try {
     const now = new Date();
+    // IST today boundaries
+    const istTodayString = new Date(Date.now() + IST_OFFSET_MS).toISOString().slice(0, 10);
+    const [y, m, d] = istTodayString.split('-').map(Number);
+    const todayStartUTC = new Date(Date.UTC(y, m - 1, d, 0, 0, 0) - IST_OFFSET_MS);
+    const todayEndUTC = new Date(Date.UTC(y, m - 1, d + 1, 0, 0, 0) - IST_OFFSET_MS);
 
-    // Today boundaries (UTC)
-    const todayStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
-    const todayEnd = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1));
-
-    // This month boundaries
-    const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
-    const monthEnd = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
-
-    // Total bookings
-    const totalBookings = await Booking.countDocuments();
-
-    // Bookings by status
-    const statusCounts = await Booking.aggregate([
-      { $group: { _id: '$status', count: { $sum: 1 } } },
+    const [
+      totalBookings,
+      pendingBookings,
+      todayAppointments,
+      revenueResult,
+      activeServices,
+      totalCustomers,
+    ] = await Promise.all([
+      Booking.countDocuments(),
+      Booking.countDocuments({ status: 'pending' }),
+      Booking.countDocuments({ startAt: { $gte: todayStartUTC, $lt: todayEndUTC } }),
+      Booking.aggregate([
+        { $match: { status: 'completed' } },
+        { $group: { _id: null, total: { $sum: '$priceAtBooking' } } },
+      ]),
+      Service.countDocuments({ isActive: true }),
+      User.countDocuments({ role: 'customer', isActive: true }),
     ]);
-    const bookingsByStatus = {};
-    statusCounts.forEach(({ _id, count }) => {
-      bookingsByStatus[_id] = count;
-    });
 
-    // Total revenue (sum of paid payments)
-    const revenueResult = await Payment.aggregate([
-      { $match: { status: 'paid' } },
-      { $group: { _id: null, total: { $sum: '$amount' } } },
-    ]);
     const totalRevenue = revenueResult[0]?.total || 0;
-
-    // Today's booking count
-    const todayBookings = await Booking.countDocuments({
-      createdAt: { $gte: todayStart, $lt: todayEnd },
-    });
-
-    // This month's revenue
-    const monthRevenueResult = await Payment.aggregate([
-      { $match: { status: 'paid', paidAt: { $gte: monthStart, $lt: monthEnd } } },
-      { $group: { _id: null, total: { $sum: '$amount' } } },
-    ]);
-    const monthRevenue = monthRevenueResult[0]?.total || 0;
-
-    // Total active customers
-    const totalActiveCustomers = await User.countDocuments({ role: 'customer', isActive: true });
 
     res.json({
       success: true,
       data: {
         totalBookings,
-        bookingsByStatus,
+        pendingBookings,
+        todayAppointments,
         totalRevenue,
-        todayBookings,
-        thisMonthRevenue: monthRevenue,
-        totalCustomers: totalActiveCustomers,
+        activeServices,
+        totalCustomers,
       },
     });
   } catch (err) {
     next(err);
   }
 };
+
+// ---------------------------------------------------------------------------
+// GET /api/admin/reports  (protect + requireAdmin)
+// ---------------------------------------------------------------------------
+export const getAdminReports = async (req, res, next) => {
+  try {
+    const now = new Date();
+
+    // Today IST boundaries
+    const istTodayString = new Date(Date.now() + IST_OFFSET_MS).toISOString().slice(0, 10);
+    const [ty, tm, td] = istTodayString.split('-').map(Number);
+    const todayStartUTC = new Date(Date.UTC(ty, tm - 1, td, 0, 0, 0) - IST_OFFSET_MS);
+    const todayEndUTC = new Date(Date.UTC(ty, tm - 1, td + 1, 0, 0, 0) - IST_OFFSET_MS);
+
+    // This month IST boundaries
+    const monthStartUTC = new Date(Date.UTC(ty, tm - 1, 1, 0, 0, 0) - IST_OFFSET_MS);
+    const monthEndUTC = new Date(Date.UTC(ty, tm, 1, 0, 0, 0) - IST_OFFSET_MS);
+
+    const [
+      totalCustomers,
+      totalBookings,
+      revenueResult,
+      statusCounts,
+      todayAppointments,
+      monthRevenueResult,
+      recentBookings,
+    ] = await Promise.all([
+      User.countDocuments({ role: 'customer', isActive: true }),
+      Booking.countDocuments(),
+      Booking.aggregate([
+        { $match: { status: 'completed' } },
+        { $group: { _id: null, total: { $sum: '$priceAtBooking' } } },
+      ]),
+      Booking.aggregate([{ $group: { _id: '$status', count: { $sum: 1 } } }]),
+      Booking.countDocuments({ startAt: { $gte: todayStartUTC, $lt: todayEndUTC } }),
+      Booking.aggregate([
+        { $match: { status: 'completed', startAt: { $gte: monthStartUTC, $lt: monthEndUTC } } },
+        { $group: { _id: null, total: { $sum: '$priceAtBooking' } } },
+      ]),
+      Booking.find()
+        .sort({ createdAt: -1 })
+        .limit(10)
+        .populate('customerId', 'name email')
+        .populate('serviceId', 'name'),
+    ]);
+
+    const totalRevenue = revenueResult[0]?.total || 0;
+    const thisMonthRevenue = monthRevenueResult[0]?.total || 0;
+
+    const bookingsByStatus = {};
+    statusCounts.forEach(({ _id, count }) => {
+      bookingsByStatus[_id] = count;
+    });
+
+    res.json({
+      success: true,
+      data: {
+        totalCustomers,
+        totalBookings,
+        totalRevenue,
+        bookingsByStatus,
+        todayAppointments,
+        thisMonthRevenue,
+        recentBookings,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// Backward compat alias
+export const getReports = getAdminReports;

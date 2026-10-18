@@ -1,27 +1,56 @@
 import api from './api';
 
-// ─── Customer-facing ──────────────────────────────────────────────────────────
+// ─── Unified service object ──────────────────────────────────────────────────
+
+export const bookingService = {
+  getAvailableSlots: (serviceId, date) =>
+    api.get(`/availability?serviceId=${serviceId}&date=${date}`).then((r) => r.data),
+
+  createBooking: (data) => api.post('/bookings', data).then((r) => r.data),
+
+  getMyBookings: (params = {}) =>
+    api.get('/bookings/my', { params }).then((r) => r.data),
+
+  getBookingById: (id) => api.get(`/bookings/${id}`).then((r) => r.data),
+
+  cancelBooking: (id, reason) =>
+    api.patch(`/bookings/${id}/cancel`, { reason }).then((r) => r.data),
+
+  rescheduleBooking: (id, newStartAt) =>
+    api.patch(`/bookings/${id}/reschedule`, { newStartAt }).then((r) => r.data),
+
+  getAdminBookings: (params) =>
+    api.get('/admin/bookings', { params }).then((r) => r.data),
+
+  updateBookingStatus: (id, status) =>
+    api.patch(`/admin/bookings/${id}/status`, { status }).then((r) => r.data),
+};
+
+// ─── Named function exports (backward compat) ────────────────────────────────
 
 export async function createBooking(data) {
-  const response = await api.post('/bookings', data);
-  return response.data;
+  return bookingService.createBooking(data);
 }
 
-export async function getMyBookings() {
-  const response = await api.get('/bookings/my');
-  return response.data;
+export async function getMyBookings(params) {
+  return bookingService.getMyBookings(params);
 }
 
+// Old name alias used by BookingDetailsScreen
 export async function getBooking(id) {
-  const response = await api.get('/bookings/' + id);
-  return response.data;
+  return bookingService.getBookingById(id);
+}
+
+export async function getBookingById(id) {
+  return bookingService.getBookingById(id);
 }
 
 export async function cancelBooking(id, reason) {
-  const response = await api.put('/bookings/' + id + '/cancel', {
-    cancelReason: reason,
-  });
-  return response.data;
+  return bookingService.cancelBooking(id, reason);
+}
+
+export async function rescheduleBooking(id, newStartAt) {
+  return bookingService.rescheduleBooking(id, newStartAt);
 }
 
 export async function getAvailability(date) {
@@ -29,16 +58,10 @@ export async function getAvailability(date) {
   return response.data;
 }
 
-// ─── Admin ────────────────────────────────────────────────────────────────────
-
 export async function getAdminBookings(params) {
-  const response = await api.get('/admin/bookings', { params });
-  return response.data;
+  return bookingService.getAdminBookings(params);
 }
 
 export async function updateBookingStatus(id, status) {
-  const response = await api.put('/admin/bookings/' + id + '/status', {
-    status,
-  });
-  return response.data;
+  return bookingService.updateBookingStatus(id, status);
 }

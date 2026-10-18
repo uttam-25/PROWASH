@@ -1,42 +1,76 @@
 import mongoose from 'mongoose';
 
-const slotSchema = new mongoose.Schema(
+const breakSchema = new mongoose.Schema(
   {
-    time: { type: String, required: true },
-    available: { type: Boolean, default: true },
+    name: { type: String },
+    startTime: { type: String, required: true }, // 'HH:MM'
+    endTime: { type: String, required: true },   // 'HH:MM'
+  },
+  { _id: false }
+);
+
+const blockedPeriodSchema = new mongoose.Schema(
+  {
+    label: { type: String },
+    startAt: { type: Date, required: true },
+    endAt: { type: Date, required: true },
+  },
+  { _id: false }
+);
+
+const holidaySchema = new mongoose.Schema(
+  {
+    date: { type: String, required: true }, // 'YYYY-MM-DD'
+    label: { type: String },
   },
   { _id: false }
 );
 
 const scheduleSchema = new mongoose.Schema(
   {
-    date: {
-      type: Date,
-      required: [true, 'Date is required'],
-      unique: true,
+    timezone: {
+      type: String,
+      default: 'Asia/Kolkata',
     },
-    maxBookings: {
+    workingDays: {
+      type: [String],
+      default: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'],
+    },
+    openingTime: {
+      type: String,
+      default: '09:00',
+    },
+    closingTime: {
+      type: String,
+      default: '19:00',
+    },
+    slotIntervalMinutes: {
       type: Number,
-      default: 10,
+      default: 30,
     },
-    bookedCount: {
+    maxConcurrentBookings: {
       type: Number,
-      default: 0,
+      default: 3,
     },
-    isOpen: {
+    breaks: {
+      type: [breakSchema],
+      default: [],
+    },
+    blockedPeriods: {
+      type: [blockedPeriodSchema],
+      default: [],
+    },
+    holidays: {
+      type: [holidaySchema],
+      default: [],
+    },
+    isActive: {
       type: Boolean,
       default: true,
-    },
-    slots: {
-      type: [slotSchema],
-      default: [],
     },
   },
   { timestamps: true }
 );
-
-// Note: date already has a unique index from the schema field definition above.
-// No additional index needed.
 
 const Schedule = mongoose.model('Schedule', scheduleSchema);
 

@@ -107,10 +107,18 @@ export const bookingRules = [
     .notEmpty().withMessage('Vehicle ID is required'),
   body('serviceId')
     .notEmpty().withMessage('Service ID is required'),
-  body('scheduledDate')
-    .notEmpty().withMessage('Scheduled date is required'),
-  body('scheduledTime')
-    .notEmpty().withMessage('Scheduled time is required'),
+  body('startAt')
+    .notEmpty().withMessage('startAt is required')
+    .isISO8601().withMessage('startAt must be a valid ISO 8601 date string'),
+  body('paymentMethod')
+    .notEmpty().withMessage('paymentMethod is required')
+    .isIn(['cod', 'online']).withMessage("paymentMethod must be 'cod' or 'online'"),
+];
+
+export const rescheduleRules = [
+  body('newStartAt')
+    .notEmpty().withMessage('newStartAt is required')
+    .isISO8601().withMessage('newStartAt must be a valid ISO 8601 date string'),
 ];
 
 export const updateProfileRules = [

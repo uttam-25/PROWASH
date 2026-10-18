@@ -58,7 +58,7 @@ function ServicesStack() {
       <Stack.Screen name="SelectDateTime" component={SelectDateTimeScreen} />
       <Stack.Screen name="BookingReview" component={BookingReviewScreen} />
       <Stack.Screen name="Payment" component={PaymentScreen} />
-      <Stack.Screen name="BookingSuccess" component={BookingSuccessScreen} />
+      <Stack.Screen name="BookingSuccess" component={BookingSuccessScreen} options={{ gestureEnabled: false, headerBackVisible: false }} />
     </Stack.Navigator>
   );
 }

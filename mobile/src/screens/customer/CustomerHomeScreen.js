@@ -69,7 +69,7 @@ export default function CustomerHomeScreen({ navigation }) {
       }
       if (bookingRes.status === 'fulfilled') {
         const b = bookingRes.value;
-        setBookings(b.bookings || b.data || []);
+        setBookings(b.data?.bookings || b.bookings || b.data || []);
       }
       if (serviceRes.status === 'fulfilled') {
         const s = serviceRes.value;
@@ -124,7 +124,7 @@ export default function CustomerHomeScreen({ navigation }) {
       {/* Hero book-a-wash CTA */}
       <TouchableOpacity
         style={styles.heroCard}
-        onPress={() => navigation.navigate('ServicesTab')}
+        onPress={() => navigation.navigate('ServicesTab', { screen: 'BookWash' })}
         activeOpacity={0.85}
         accessibilityRole="button"
         accessibilityLabel="Book a Wash"

@@ -14,6 +14,8 @@ export const BOOKING_STATUS = {
   IN_PROGRESS: 'in_progress',
   COMPLETED: 'completed',
   CANCELLED: 'cancelled',
+  REJECTED: 'rejected',
+  RESCHEDULED: 'rescheduled',
 };
 
 export const PAYMENT_METHODS = {

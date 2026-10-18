@@ -13,7 +13,7 @@ import BookingCard from '../../components/BookingCard';
 import LoadingView from '../../components/LoadingView';
 import ErrorView from '../../components/ErrorView';
 import EmptyState from '../../components/EmptyState';
-import * as bookingService from '../../services/bookingService';
+import { bookingService } from '../../services/bookingService';
 import { BOOKING_STATUS } from '../../constants/index';
 import colors from '../../theme/colors';
 import spacing from '../../theme/spacing';
@@ -21,6 +21,7 @@ import typography from '../../theme/typography';
 
 const STATUS_FILTERS = [
   { label: 'All', value: 'all' },
+  { label: 'Upcoming', value: 'upcoming' },
   { label: 'Pending', value: BOOKING_STATUS.PENDING },
   { label: 'Confirmed', value: BOOKING_STATUS.CONFIRMED },
   { label: 'In Progress', value: BOOKING_STATUS.IN_PROGRESS },
@@ -29,7 +30,7 @@ const STATUS_FILTERS = [
 ];
 
 export default function MyBookingsScreen({ navigation }) {
-  const [bookings, setBookings] = useState([]);
+  const [allBookings, setAllBookings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
@@ -38,8 +39,14 @@ export default function MyBookingsScreen({ navigation }) {
   const loadBookings = useCallback(async () => {
     setError(null);
     try {
-      const data = await bookingService.getMyBookings();
-      setBookings(data.bookings || data.data || []);
+      // Fetch all for client-side filtering (upcoming). For server-only filters, pass status param.
+      const data = await bookingService.getMyBookings({});
+      const bookings =
+        data.data?.bookings ||
+        data.data ||
+        data.bookings ||
+        [];
+      setAllBookings(Array.isArray(bookings) ? bookings : []);
     } catch (err) {
       setError(err?.response?.data?.message || 'Failed to load bookings.');
     } finally {
@@ -60,12 +67,32 @@ export default function MyBookingsScreen({ navigation }) {
     loadBookings();
   };
 
-  const filtered = activeFilter === 'all'
-    ? bookings
-    : bookings.filter((b) => b.status === activeFilter);
+  const now = new Date();
+
+  const filtered = (() => {
+    if (activeFilter === 'all') return allBookings;
+    if (activeFilter === 'upcoming') {
+      return allBookings.filter(
+        (b) =>
+          ['pending', 'confirmed', 'in_progress'].includes(b.status) &&
+          new Date(b.startAt) >= now
+      );
+    }
+    return allBookings.filter((b) => b.status === activeFilter);
+  })();
 
   if (loading) return <LoadingView message="Loading your bookings…" />;
-  if (error) return <ErrorView message={error} onRetry={() => { setLoading(true); loadBookings(); }} />;
+  if (error) {
+    return (
+      <ErrorView
+        message={error}
+        onRetry={() => {
+          setLoading(true);
+          loadBookings();
+        }}
+      />
+    );
+  }
 
   return (
     <View style={styles.container}>

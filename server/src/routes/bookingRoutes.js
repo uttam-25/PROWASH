@@ -2,24 +2,20 @@ import { Router } from 'express';
 import {
   createBooking,
   getMyBookings,
-  getBooking,
+  getBookingById,
   cancelBooking,
-  getAllBookings,
-  updateBookingStatus,
+  rescheduleBooking,
 } from '../controllers/bookingController.js';
-import { protect, requireAdmin } from '../middleware/auth.js';
-import { validate, bookingRules } from '../middleware/validate.js';
+import { protect } from '../middleware/auth.js';
+import { validate, bookingRules, rescheduleRules } from '../middleware/validate.js';
 
 const router = Router();
 
 // Customer routes
 router.post('/', protect, validate(bookingRules), createBooking);
 router.get('/my', protect, getMyBookings);
-router.get('/:id', protect, getBooking);
-router.put('/:id/cancel', protect, cancelBooking);
-
-// Admin routes
-router.get('/admin/bookings', protect, requireAdmin, getAllBookings);
-router.put('/admin/bookings/:id/status', protect, requireAdmin, updateBookingStatus);
+router.get('/:id', protect, getBookingById);
+router.patch('/:id/cancel', protect, cancelBooking);
+router.patch('/:id/reschedule', protect, validate(rescheduleRules), rescheduleBooking);
 
 export default router;
