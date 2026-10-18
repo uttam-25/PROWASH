@@ -62,7 +62,7 @@ export default function NotificationsScreen() {
     setError(null);
     try {
       const data = await notificationService.getMyNotifications();
-      setNotifications(data.notifications || data.data || []);
+      setNotifications(data.data?.notifications || data.notifications || []);
     } catch (err) {
       setError(err?.response?.data?.message || 'Failed to load notifications.');
     } finally {

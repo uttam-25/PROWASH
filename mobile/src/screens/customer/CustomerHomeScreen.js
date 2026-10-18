@@ -18,6 +18,7 @@ import EmptyState from '../../components/EmptyState';
 import * as vehicleService from '../../services/vehicleService';
 import * as bookingService from '../../services/bookingService';
 import * as serviceService from '../../services/serviceService';
+import * as notificationService from '../../services/notificationService';
 import colors from '../../theme/colors';
 import spacing from '../../theme/spacing';
 import typography from '../../theme/typography';
@@ -47,6 +48,7 @@ export default function CustomerHomeScreen({ navigation }) {
   const [services, setServices] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
 
   const greeting = () => {
     const hour = new Date().getHours();
@@ -87,6 +89,11 @@ export default function CustomerHomeScreen({ navigation }) {
     useCallback(() => {
       setLoading(true);
       loadData();
+      notificationService.getNotifications(true)
+        .then((data) => {
+          setUnreadCount(data.data?.unreadCount ?? 0);
+        })
+        .catch(() => {}); // silent — badge is non-critical
     }, [loadData])
   );
 
@@ -118,6 +125,13 @@ export default function CustomerHomeScreen({ navigation }) {
           accessibilityRole="button"
         >
           <Ionicons name="notifications-outline" size={22} color={colors.white} />
+          {unreadCount > 0 && (
+            <View style={styles.badge}>
+              <Text style={styles.badgeText}>
+                {unreadCount > 99 ? '99+' : unreadCount}
+              </Text>
+            </View>
+          )}
         </TouchableOpacity>
       </View>
 
@@ -268,6 +282,7 @@ const styles = StyleSheet.create({
   },
   headerBtn: {
     padding: spacing.sm,
+    position: 'relative',
   },
   heroCard: {
     flexDirection: 'row',
@@ -330,5 +345,23 @@ const styles = StyleSheet.create({
     borderStyle: 'dashed',
     overflow: 'hidden',
     minHeight: 140,
+  },
+  badge: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    minWidth: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: colors.error,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 2,
+  },
+  badgeText: {
+    color: colors.white,
+    fontSize: 9,
+    fontWeight: 'bold',
+    lineHeight: 11,
   },
 });

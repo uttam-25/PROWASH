@@ -219,7 +219,17 @@ export default function BookWashScreen() {
         paymentMethod,
         notes: notes.trim() || undefined,
       });
-      navigation.navigate('BookingSuccess', { booking: result.data });
+      const booking = result.data;
+      if (paymentMethod === 'online') {
+        navigation.navigate('Payment', {
+          bookingId: booking._id,
+          bookingReference: booking.bookingReference,
+          amount: selectedService.price,
+          serviceName: selectedService.name,
+        });
+      } else {
+        navigation.navigate('BookingSuccess', { booking: result.data });
+      }
     } catch (err) {
       const status = err?.response?.status;
       if (status === 409) {
@@ -466,12 +476,21 @@ export default function BookWashScreen() {
             </Text>
           </TouchableOpacity>
 
-          <View style={[styles.paymentChip, styles.paymentChipDisabled]}>
-            <Text style={[styles.paymentChipText, { color: colors.textSecondary }]}>
+          <TouchableOpacity
+            style={[styles.paymentChip, paymentMethod === 'online' && styles.paymentChipActive]}
+            onPress={() => setPaymentMethod('online')}
+            accessibilityRole="radio"
+            accessibilityLabel="Pay Online"
+          >
+            <Text
+              style={[
+                styles.paymentChipText,
+                paymentMethod === 'online' && styles.paymentChipTextActive,
+              ]}
+            >
               Pay Online
             </Text>
-            <Text style={styles.comingSoonBadge}>Coming Soon</Text>
-          </View>
+          </TouchableOpacity>
         </View>
 
         {/* Error states */}
@@ -775,18 +794,11 @@ const styles = StyleSheet.create({
     borderColor: colors.ocean,
     backgroundColor: colors.ocean + '15',
   },
-  paymentChipDisabled: {
-    opacity: 0.5,
-  },
   paymentChipText: {
     ...typography.makeTextStyle('sm', 'semibold', colors.textPrimary),
   },
   paymentChipTextActive: {
     color: colors.ocean,
-  },
-  comingSoonBadge: {
-    ...typography.makeTextStyle('xs', 'regular', colors.textSecondary),
-    marginTop: 2,
   },
   errorText: {
     ...typography.makeTextStyle('sm', 'regular', colors.error),

@@ -1,152 +1,143 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
   ScrollView,
   StyleSheet,
-  TouchableOpacity,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import AppHeader from '../../components/AppHeader';
 import AppButton from '../../components/AppButton';
-import * as bookingService from '../../services/bookingService';
+import LoadingView from '../../components/LoadingView';
+import ErrorView from '../../components/ErrorView';
+import * as paymentService from '../../services/paymentService';
 import colors from '../../theme/colors';
 import spacing from '../../theme/spacing';
 import typography from '../../theme/typography';
 
-const PAYMENT_METHODS = [
-  {
-    id: 'cod',
-    label: 'Cash on Delivery',
-    description: 'Pay in cash when the technician arrives.',
-    icon: 'cash-outline',
-    enabled: true,
-  },
-  {
-    id: 'razorpay',
-    label: 'Razorpay',
-    description: 'Requires merchant account setup — coming soon.',
-    icon: 'card-outline',
-    enabled: false,
-  },
-];
-
 export default function PaymentScreen({ route, navigation }) {
-  const { vehicleId, serviceId, date, time, amount } = route.params;
+  const { bookingId, bookingReference, amount, serviceName } = route.params || {};
 
-  const [selectedMethod, setSelectedMethod] = useState('cod');
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
+  const [screenState, setScreenState] = useState('loading');
+  const [orderData, setOrderData] = useState(null);
+  const [errorMessage, setErrorMessage] = useState(null);
+  const [retryCount, setRetryCount] = useState(0);
 
-  const handlePay = async () => {
-    setError(null);
-    setLoading(true);
-    try {
-      const result = await bookingService.createBooking({
-        vehicleId,
-        serviceId,
-        scheduledDate: date,
-        scheduledTime: time,
-        paymentMethod: selectedMethod,
-      });
-      const booking = result.booking || result.data;
-      navigation.replace('BookingSuccess', {
-        bookingId: booking?._id,
-        date,
-        time,
-        amount,
-      });
-    } catch (err) {
-      setError(err?.response?.data?.message || 'Payment failed. Please try again.');
-    } finally {
-      setLoading(false);
+  useEffect(() => {
+    let cancelled = false;
+
+    async function initPayment() {
+      setScreenState('loading');
+      try {
+        const result = await paymentService.createRazorpayOrder(bookingId);
+        if (cancelled) return;
+        setOrderData(result.data);
+        setScreenState('ready');
+      } catch (err) {
+        if (cancelled) return;
+        const status = err?.response?.status;
+        const code = err?.response?.data?.code;
+        if (status === 503 || code === 'RAZORPAY_NOT_CONFIGURED') {
+          setScreenState('cod_fallback');
+        } else {
+          setErrorMessage(
+            err?.response?.data?.message || 'Something went wrong. Please try again.'
+          );
+          setScreenState('error');
+        }
+      }
     }
-  };
+
+    initPayment();
+    return () => { cancelled = true; };
+  }, [bookingId, retryCount]);
+
+  if (screenState === 'loading') {
+    return <LoadingView message="Preparing payment…" />;
+  }
+
+  if (screenState === 'error') {
+    return (
+      <View style={styles.container}>
+        <AppHeader title="Payment" showBack onBack={() => navigation.goBack()} />
+        <ErrorView
+          message={errorMessage}
+          onRetry={() => setRetryCount((c) => c + 1)}
+        />
+      </View>
+    );
+  }
+
+  if (screenState === 'cod_fallback') {
+    return (
+      <View style={styles.container}>
+        <AppHeader title="Booking Confirmed" showBack={false} />
+        <ScrollView contentContainerStyle={styles.content}>
+          <View style={styles.successIconRow}>
+            <View style={styles.successIconCircle}>
+              <Ionicons name="checkmark" size={44} color={colors.white} />
+            </View>
+          </View>
+
+          <Text style={styles.refLabel}>Booking Reference</Text>
+          <Text style={styles.refValue}>{bookingReference}</Text>
+
+          <View style={styles.infoCard}>
+            <Text style={styles.infoServiceName}>{serviceName}</Text>
+            <Text style={styles.infoAmount}>Amount due: ₹{amount}</Text>
+            <Text style={styles.infoMessage}>
+              Your booking is confirmed. Please pay cash when the technician arrives.
+            </Text>
+          </View>
+
+          <AppButton
+            title="View My Bookings"
+            onPress={() => navigation.navigate('BookingsTab')}
+            size="lg"
+            style={styles.actionBtn}
+          />
+        </ScrollView>
+      </View>
+    );
+  }
+
+  // screenState === 'ready'
+  const orderId = orderData?.orderId;
 
   return (
     <View style={styles.container}>
-      <AppHeader title="Payment" showBack onBack={() => navigation.goBack()} />
-      <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={styles.content}
-        showsVerticalScrollIndicator={false}
-      >
-        {/* Amount summary */}
+      <AppHeader title="Complete Payment" showBack onBack={() => navigation.goBack()} />
+      <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.amountCard}>
           <Text style={styles.amountLabel}>Amount to Pay</Text>
           <Text style={styles.amountValue}>₹{amount}</Text>
         </View>
 
-        <Text style={styles.sectionTitle}>Payment Method</Text>
+        <Text style={styles.refLabel}>Booking Reference</Text>
+        <Text style={styles.refValue}>{bookingReference}</Text>
 
-        {PAYMENT_METHODS.map((method) => (
-          <TouchableOpacity
-            key={method.id}
-            style={[
-              styles.methodCard,
-              selectedMethod === method.id && styles.methodCardSelected,
-              !method.enabled && styles.methodCardDisabled,
-            ]}
-            onPress={() => method.enabled && setSelectedMethod(method.id)}
-            disabled={!method.enabled}
-            accessibilityRole="radio"
-            accessibilityState={{ checked: selectedMethod === method.id, disabled: !method.enabled }}
-          >
-            <View style={styles.methodIcon}>
-              <Ionicons
-                name={method.icon}
-                size={24}
-                color={
-                  !method.enabled
-                    ? colors.textSecondary
-                    : selectedMethod === method.id
-                    ? colors.ocean
-                    : colors.textPrimary
-                }
-              />
-            </View>
-            <View style={styles.methodInfo}>
-              <Text
-                style={[
-                  styles.methodLabel,
-                  !method.enabled && styles.methodLabelDisabled,
-                ]}
-              >
-                {method.label}
-              </Text>
-              <Text style={styles.methodDescription}>{method.description}</Text>
-            </View>
-            {method.enabled && (
-              <View
-                style={[
-                  styles.radioOuter,
-                  selectedMethod === method.id && styles.radioOuterSelected,
-                ]}
-              >
-                {selectedMethod === method.id ? (
-                  <View style={styles.radioInner} />
-                ) : null}
-              </View>
-            )}
-          </TouchableOpacity>
-        ))}
+        <Text style={styles.serviceNameText}>{serviceName}</Text>
 
-        {error ? (
-          <View style={styles.errorBox}>
-            <Ionicons name="alert-circle-outline" size={16} color={colors.error} />
-            <Text style={styles.errorText}>{error}</Text>
-          </View>
-        ) : null}
-      </ScrollView>
+        <View style={styles.infoCard}>
+          <Text style={styles.infoMessage}>
+            Tap 'Pay Now' to open the Razorpay checkout.
+          </Text>
+        </View>
 
-      <View style={styles.footer}>
+        <View style={styles.devNoteBox}>
+          <Text style={styles.devNoteText}>
+            Development mode: react-native-razorpay is not installed.{'\n'}
+            Order ID: {orderId}
+          </Text>
+        </View>
+
         <AppButton
-          title={`Pay ₹${amount}`}
-          onPress={handlePay}
-          loading={loading}
+          title="View My Bookings"
+          onPress={() => navigation.navigate('BookingsTab')}
           size="lg"
+          style={styles.actionBtn}
         />
-      </View>
+      </ScrollView>
     </View>
   );
 }
@@ -156,19 +147,74 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.cloud,
   },
-  scroll: {
-    flex: 1,
-  },
   content: {
     padding: spacing.lg,
-    paddingBottom: spacing.xl,
+    paddingBottom: spacing.xxl,
+    alignItems: 'center',
   },
+  // COD fallback success icon
+  successIconRow: {
+    marginTop: spacing.xl,
+    marginBottom: spacing.lg,
+    alignItems: 'center',
+  },
+  successIconCircle: {
+    width: 88,
+    height: 88,
+    borderRadius: 44,
+    backgroundColor: colors.ocean,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  // Shared ref styles
+  refLabel: {
+    ...typography.makeTextStyle('xs', 'semibold', colors.textSecondary),
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: spacing.xs,
+    alignSelf: 'center',
+  },
+  refValue: {
+    ...typography.makeTextStyle('xl', 'bold', colors.textPrimary),
+    marginBottom: spacing.lg,
+    alignSelf: 'center',
+    textAlign: 'center',
+  },
+  // Info card (COD fallback body / ready body)
+  infoCard: {
+    width: '100%',
+    backgroundColor: colors.white,
+    borderRadius: spacing.borderRadius.md,
+    padding: spacing.lg,
+    marginBottom: spacing.lg,
+    elevation: 1,
+    shadowColor: colors.black,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 4,
+    alignItems: 'center',
+  },
+  infoServiceName: {
+    ...typography.makeTextStyle('lg', 'semibold', colors.textPrimary),
+    marginBottom: spacing.xs,
+    textAlign: 'center',
+  },
+  infoAmount: {
+    ...typography.makeTextStyle('md', 'semibold', colors.ocean),
+    marginBottom: spacing.md,
+  },
+  infoMessage: {
+    ...typography.makeTextStyle('sm', 'regular', colors.textSecondary),
+    textAlign: 'center',
+  },
+  // Ready state amount card
   amountCard: {
+    width: '100%',
     backgroundColor: colors.midnight,
     borderRadius: spacing.borderRadius.md,
     padding: spacing.lg,
     alignItems: 'center',
-    marginBottom: spacing.xl,
+    marginBottom: spacing.lg,
   },
   amountLabel: {
     ...typography.makeTextStyle('sm', 'semibold', colors.softGray),
@@ -179,89 +225,27 @@ const styles = StyleSheet.create({
   amountValue: {
     ...typography.makeTextStyle('display', 'bold', colors.aqua),
   },
-  sectionTitle: {
-    ...typography.makeTextStyle('lg', 'semibold', colors.textPrimary),
-    marginBottom: spacing.md,
+  serviceNameText: {
+    ...typography.makeTextStyle('md', 'regular', colors.textSecondary),
+    marginBottom: spacing.lg,
+    textAlign: 'center',
   },
-  methodCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.white,
-    borderRadius: spacing.borderRadius.md,
-    padding: spacing.md,
-    marginBottom: spacing.md,
-    borderWidth: 2,
-    borderColor: 'transparent',
-    elevation: 1,
-    shadowColor: colors.black,
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06,
-    shadowRadius: 4,
-  },
-  methodCardSelected: {
-    borderColor: colors.ocean,
-  },
-  methodCardDisabled: {
-    opacity: 0.55,
-  },
-  methodIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: colors.softGray,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: spacing.md,
-  },
-  methodInfo: {
-    flex: 1,
-  },
-  methodLabel: {
-    ...typography.makeTextStyle('md', 'semibold', colors.textPrimary),
-    marginBottom: 2,
-  },
-  methodLabelDisabled: {
-    color: colors.textSecondary,
-  },
-  methodDescription: {
-    ...typography.makeTextStyle('xs', 'regular', colors.textSecondary),
-  },
-  radioOuter: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    borderWidth: 2,
-    borderColor: colors.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginLeft: spacing.sm,
-  },
-  radioOuterSelected: {
-    borderColor: colors.ocean,
-  },
-  radioInner: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: colors.ocean,
-  },
-  errorBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    backgroundColor: '#FFEBEE',
+  // Dev note box
+  devNoteBox: {
+    width: '100%',
+    backgroundColor: '#FFFDE7',
     borderRadius: spacing.borderRadius.sm,
+    borderWidth: 1,
+    borderColor: '#FFF176',
     padding: spacing.md,
-    marginTop: spacing.sm,
+    marginBottom: spacing.lg,
   },
-  errorText: {
-    ...typography.makeTextStyle('sm', 'regular', colors.error),
-    flex: 1,
+  devNoteText: {
+    ...typography.makeTextStyle('xs', 'regular', colors.textSecondary),
+    textAlign: 'center',
+    lineHeight: 18,
   },
-  footer: {
-    padding: spacing.lg,
-    backgroundColor: colors.white,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
+  actionBtn: {
+    width: '100%',
   },
 });

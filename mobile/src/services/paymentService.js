@@ -12,6 +12,16 @@ export async function getPayment(id) {
   return response.data;
 }
 
+export async function createRazorpayOrder(bookingId) {
+  const response = await api.post('/payments/create-order', { bookingId });
+  return response.data;
+}
+
+export async function verifyPayment(data) {
+  const response = await api.post('/payments/verify', data);
+  return response.data;
+}
+
 // ─── Admin ────────────────────────────────────────────────────────────────────
 
 export async function getAdminPayments(params) {
