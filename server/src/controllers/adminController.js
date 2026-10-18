@@ -260,7 +260,7 @@ export const getAdminReports = async (req, res, next) => {
             as: 'vehicle',
           },
         },
-        { $unwind: { path: '$vehicle', preserveNullAndEmpty: false } },
+        { $unwind: { path: '$vehicle', preserveNullAndEmptyArrays: false } },
         { $group: { _id: '$vehicle.type', count: { $sum: 1 } } },
       ]),
       // 9. bookings by service (with name + revenue)
@@ -273,7 +273,7 @@ export const getAdminReports = async (req, res, next) => {
             as: 'service',
           },
         },
-        { $unwind: { path: '$service', preserveNullAndEmpty: false } },
+        { $unwind: { path: '$service', preserveNullAndEmptyArrays: false } },
         {
           $group: {
             _id: '$serviceId',
