@@ -70,3 +70,64 @@ export const resetPasswordRules = [
     .notEmpty().withMessage('New password is required')
     .isLength({ min: 6 }).withMessage('Password must be at least 6 characters'),
 ];
+
+export const vehicleRules = [
+  body('type')
+    .notEmpty().withMessage('Vehicle type is required')
+    .isIn(['Car', 'Bike', 'Scooty', 'SUV', 'Truck', 'Van'])
+    .withMessage('Vehicle type must be one of: Car, Bike, Scooty, SUV, Truck, Van'),
+  body('make')
+    .trim()
+    .notEmpty().withMessage('Vehicle make is required'),
+  body('model')
+    .trim()
+    .notEmpty().withMessage('Vehicle model is required'),
+];
+
+export const serviceRules = [
+  body('name')
+    .trim()
+    .notEmpty().withMessage('Service name is required'),
+  body('category')
+    .notEmpty().withMessage('Category is required')
+    .isIn(['exterior', 'interior', 'full', 'premium'])
+    .withMessage('Category must be one of: exterior, interior, full, premium'),
+  body('price')
+    .notEmpty().withMessage('Price is required')
+    .isNumeric().withMessage('Price must be a number')
+    .custom((val) => val >= 0).withMessage('Price cannot be negative'),
+  body('duration')
+    .notEmpty().withMessage('Duration is required')
+    .isNumeric().withMessage('Duration must be a number')
+    .custom((val) => val >= 1).withMessage('Duration must be at least 1 minute'),
+];
+
+export const bookingRules = [
+  body('vehicleId')
+    .notEmpty().withMessage('Vehicle ID is required'),
+  body('serviceId')
+    .notEmpty().withMessage('Service ID is required'),
+  body('scheduledDate')
+    .notEmpty().withMessage('Scheduled date is required'),
+  body('scheduledTime')
+    .notEmpty().withMessage('Scheduled time is required'),
+];
+
+export const updateProfileRules = [
+  body('name')
+    .optional()
+    .trim()
+    .isLength({ min: 2 }).withMessage('Name must be at least 2 characters')
+    .isLength({ max: 50 }).withMessage('Name cannot exceed 50 characters'),
+  body('phone')
+    .optional()
+    .trim(),
+];
+
+export const changePasswordRules = [
+  body('currentPassword')
+    .notEmpty().withMessage('Current password is required'),
+  body('newPassword')
+    .notEmpty().withMessage('New password is required')
+    .isLength({ min: 6 }).withMessage('New password must be at least 6 characters'),
+];

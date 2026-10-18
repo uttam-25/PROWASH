@@ -5,6 +5,8 @@ import {
   getMe,
   forgotPassword,
   resetPassword,
+  updateProfile,
+  changePassword,
 } from '../controllers/authController.js';
 import { protect } from '../middleware/auth.js';
 import {
@@ -13,6 +15,8 @@ import {
   loginRules,
   forgotPasswordRules,
   resetPasswordRules,
+  updateProfileRules,
+  changePasswordRules,
 } from '../middleware/validate.js';
 
 const router = Router();
@@ -25,6 +29,12 @@ router.post('/login', validate(loginRules), login);
 
 // GET /api/auth/me  (protected)
 router.get('/me', protect, getMe);
+
+// PUT /api/auth/profile  (protected)
+router.put('/profile', protect, validate(updateProfileRules), updateProfile);
+
+// PUT /api/auth/change-password  (protected)
+router.put('/change-password', protect, validate(changePasswordRules), changePassword);
 
 // POST /api/auth/forgot-password
 router.post('/forgot-password', validate(forgotPasswordRules), forgotPassword);

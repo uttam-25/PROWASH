@@ -4,6 +4,14 @@ import cors from 'cors';
 import morgan from 'morgan';
 
 import authRoutes from './routes/authRoutes.js';
+import vehicleRoutes from './routes/vehicleRoutes.js';
+import serviceRoutes from './routes/serviceRoutes.js';
+import availabilityRoutes from './routes/availabilityRoutes.js';
+import bookingRoutes from './routes/bookingRoutes.js';
+import paymentRoutes from './routes/paymentRoutes.js';
+import customerRoutes from './routes/customerRoutes.js';
+import notificationRoutes from './routes/notificationRoutes.js';
+import adminRoutes from './routes/adminRoutes.js';
 import errorHandler from './middleware/errorHandler.js';
 
 const app = express();
@@ -34,6 +42,30 @@ app.get('/api/health', (req, res) => {
 
 // Auth routes
 app.use('/api/auth', authRoutes);
+
+// Vehicle routes
+app.use('/api/vehicles', vehicleRoutes);
+
+// Service routes
+app.use('/api/services', serviceRoutes);
+
+// Availability routes
+app.use('/api/availability', availabilityRoutes);
+
+// Booking routes
+app.use('/api/bookings', bookingRoutes);
+
+// Payment routes
+app.use('/api/payments', paymentRoutes);
+
+// Admin customer management routes
+app.use('/api/admin/customers', customerRoutes);
+
+// Notification routes
+app.use('/api/notifications', notificationRoutes);
+
+// Admin routes (reports, schedule, admin-scoped resources)
+app.use('/api/admin', adminRoutes);
 
 // Catch-all 404
 app.use((req, res) => {

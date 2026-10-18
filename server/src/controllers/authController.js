@@ -4,6 +4,57 @@ import { generateToken, generateResetToken } from '../utils/generateToken.js';
 import sendEmail from '../utils/sendEmail.js';
 import { AppError } from '../middleware/errorHandler.js';
 
+// ---------------------------------------------------------------------------
+// PUT /api/auth/profile  (protected)
+// ---------------------------------------------------------------------------
+export const updateProfile = async (req, res, next) => {
+  try {
+    const { name, phone, avatar } = req.body;
+
+    const user = await User.findById(req.user._id);
+    if (!user) {
+      return next(new AppError('User not found', 404));
+    }
+
+    // Never change email or role from this endpoint
+    if (name !== undefined) user.name = name;
+    if (phone !== undefined) user.phone = phone;
+    if (avatar !== undefined) user.avatar = avatar;
+
+    await user.save({ validateBeforeSave: true });
+
+    res.json({ success: true, data: userResponse(user) });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ---------------------------------------------------------------------------
+// PUT /api/auth/change-password  (protected)
+// ---------------------------------------------------------------------------
+export const changePassword = async (req, res, next) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+
+    const user = await User.findById(req.user._id).select('+password');
+    if (!user) {
+      return next(new AppError('User not found', 404));
+    }
+
+    const isMatch = await user.comparePassword(currentPassword);
+    if (!isMatch) {
+      return next(new AppError('Current password is incorrect', 401));
+    }
+
+    user.password = newPassword;
+    await user.save();
+
+    res.json({ success: true, data: { message: 'Password updated successfully' } });
+  } catch (err) {
+    next(err);
+  }
+};
+
 // Helper — shape the user object returned to the client (no password)
 const userResponse = (user) => ({
   _id: user._id,
