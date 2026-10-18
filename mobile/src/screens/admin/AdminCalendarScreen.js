@@ -5,13 +5,15 @@ import {
   TouchableOpacity,
   StyleSheet,
   ScrollView,
+  ActivityIndicator,
   RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import AppHeader from '../../components/AppHeader';
 import LoadingView from '../../components/LoadingView';
-import { getAdminBookings } from '../../services/bookingService';
+import StatusBadge from '../../components/StatusBadge';
+import adminService from '../../services/adminService';
 import colors from '../../theme/colors';
 import spacing from '../../theme/spacing';
 import typography from '../../theme/typography';
@@ -30,25 +32,39 @@ function toDateString(year, month, day) {
   return `${year}-${padZero(month + 1)}-${padZero(day)}`;
 }
 
-export default function AdminCalendarScreen({ navigation }) {
+function formatTime(dateInput) {
+  if (!dateInput) return '';
+  const d = new Date(dateInput);
+  if (isNaN(d.getTime())) return '';
+  return d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+}
+
+export default function AdminCalendarScreen() {
   const today = new Date();
+  const todayStr = toDateString(today.getFullYear(), today.getMonth(), today.getDate());
+
   const [year, setYear] = useState(today.getFullYear());
   const [month, setMonth] = useState(today.getMonth());
   const [bookingsByDate, setBookingsByDate] = useState({});
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
+  // Selected day bookings
+  const [selectedDate, setSelectedDate] = useState(todayStr);
+  const [selectedBookings, setSelectedBookings] = useState([]);
+  const [bookingsLoading, setBookingsLoading] = useState(false);
+
   const monthKey = `${year}-${padZero(month + 1)}`;
 
-  const loadBookings = useCallback(async () => {
+  const loadMonthBookings = useCallback(async () => {
     try {
-      const data = await getAdminBookings({ month: monthKey });
-      const list = data.data?.bookings || data.data || [];
-      // Aggregate counts per day
+      const data = await adminService.getBookings({ month: monthKey });
+      const list = data?.data?.bookings || data?.data || [];
       const counts = {};
       list.forEach((b) => {
-        if (b.scheduledDate) {
-          const d = b.scheduledDate.slice(0, 10);
+        const dateField = b.startAt || b.scheduledDate;
+        if (dateField) {
+          const d = dateField.slice(0, 10);
           counts[d] = (counts[d] || 0) + 1;
         }
       });
@@ -63,13 +79,26 @@ export default function AdminCalendarScreen({ navigation }) {
 
   useEffect(() => {
     setLoading(true);
-    loadBookings();
-  }, [loadBookings]);
+    loadMonthBookings();
+  }, [loadMonthBookings]);
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
-    loadBookings();
-  }, [loadBookings]);
+    loadMonthBookings();
+  }, [loadMonthBookings]);
+
+  const loadDayBookings = useCallback(async (dateStr) => {
+    try {
+      setBookingsLoading(true);
+      const data = await adminService.getBookings({ date: dateStr });
+      const list = data?.data?.bookings || data?.data || [];
+      setSelectedBookings(list);
+    } catch {
+      setSelectedBookings([]);
+    } finally {
+      setBookingsLoading(false);
+    }
+  }, []);
 
   const goToPrevMonth = () => {
     if (month === 0) {
@@ -91,36 +120,23 @@ export default function AdminCalendarScreen({ navigation }) {
 
   // Build calendar grid
   const calendarDays = useMemo(() => {
-    const firstDay = new Date(year, month, 1).getDay(); // 0=Sun
+    const firstDay = new Date(year, month, 1).getDay();
     const daysInMonth = new Date(year, month + 1, 0).getDate();
     const cells = [];
-    // Leading empty cells
-    for (let i = 0; i < firstDay; i++) {
-      cells.push(null);
-    }
-    for (let d = 1; d <= daysInMonth; d++) {
-      cells.push(d);
-    }
-    // Trailing empty cells to complete last row
+    for (let i = 0; i < firstDay; i++) cells.push(null);
+    for (let d = 1; d <= daysInMonth; d++) cells.push(d);
     const remainder = cells.length % 7;
     if (remainder !== 0) {
-      for (let i = 0; i < 7 - remainder; i++) {
-        cells.push(null);
-      }
+      for (let i = 0; i < 7 - remainder; i++) cells.push(null);
     }
     return cells;
   }, [year, month]);
 
-  const todayStr = toDateString(
-    today.getFullYear(),
-    today.getMonth(),
-    today.getDate()
-  );
-
   const handleDayPress = (day) => {
     if (!day) return;
     const dateStr = toDateString(year, month, day);
-    navigation.navigate('AdminSchedule', { date: dateStr });
+    setSelectedDate(dateStr);
+    loadDayBookings(dateStr);
   };
 
   if (loading && !refreshing) {
@@ -188,10 +204,15 @@ export default function AdminCalendarScreen({ navigation }) {
             const dateStr = toDateString(year, month, day);
             const count = bookingsByDate[dateStr] || 0;
             const isToday = dateStr === todayStr;
+            const isSelected = dateStr === selectedDate;
             return (
               <TouchableOpacity
                 key={dateStr}
-                style={[styles.dayCell, isToday && styles.dayCellToday]}
+                style={[
+                  styles.dayCell,
+                  isToday && styles.dayCellToday,
+                  isSelected && styles.dayCellSelected,
+                ]}
                 onPress={() => handleDayPress(day)}
                 accessibilityRole="button"
                 accessibilityLabel={`${day} ${MONTH_NAMES[month]}, ${count} bookings`}
@@ -200,6 +221,7 @@ export default function AdminCalendarScreen({ navigation }) {
                   style={[
                     styles.dayNumber,
                     isToday && styles.dayNumberToday,
+                    isSelected && styles.dayNumberSelected,
                   ]}
                 >
                   {day}
@@ -226,6 +248,47 @@ export default function AdminCalendarScreen({ navigation }) {
             <View style={[styles.legendDot, { backgroundColor: colors.aqua }]} />
             <Text style={styles.legendText}>Today</Text>
           </View>
+          <View style={styles.legendItem}>
+            <View style={[styles.legendDot, { backgroundColor: colors.midnight }]} />
+            <Text style={styles.legendText}>Selected</Text>
+          </View>
+        </View>
+
+        {/* Bookings for selected date */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>
+            Bookings for {selectedDate}
+          </Text>
+          {bookingsLoading ? (
+            <View style={styles.dayLoadingWrap}>
+              <ActivityIndicator size="small" color={colors.ocean} />
+            </View>
+          ) : selectedBookings.length === 0 ? (
+            <View style={styles.emptyDay}>
+              <Ionicons name="calendar-outline" size={32} color={colors.textSecondary} />
+              <Text style={styles.emptyDayText}>No bookings on this day</Text>
+            </View>
+          ) : (
+            selectedBookings.map((b) => {
+              const startAt = b.startAt || b.scheduledDate;
+              const customerName = b.customerId?.name || b.customer?.name || 'Customer';
+              const serviceName = b.serviceNameSnapshot || b.serviceId?.name || b.service?.name || 'Service';
+              return (
+                <View key={b._id} style={styles.bookingRow}>
+                  <Text style={styles.bookingTime}>{formatTime(startAt)}</Text>
+                  <View style={styles.bookingInfo}>
+                    <Text style={styles.bookingCustomer} numberOfLines={1}>
+                      {customerName}
+                    </Text>
+                    <Text style={styles.bookingService} numberOfLines={1}>
+                      {serviceName}
+                    </Text>
+                  </View>
+                  <StatusBadge status={b.status} />
+                </View>
+              );
+            })
+          )}
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -298,11 +361,18 @@ const styles = StyleSheet.create({
   dayCellToday: {
     backgroundColor: 'rgba(64,196,255,0.15)',
   },
+  dayCellSelected: {
+    backgroundColor: colors.midnight + '1A',
+  },
   dayNumber: {
     ...typography.makeTextStyle('sm', 'medium', colors.textPrimary),
   },
   dayNumberToday: {
     color: colors.ocean,
+    fontWeight: '700',
+  },
+  dayNumberSelected: {
+    color: colors.midnight,
     fontWeight: '700',
   },
   countBadge: {
@@ -328,6 +398,7 @@ const styles = StyleSheet.create({
     gap: spacing.lg,
     marginTop: spacing.md,
     paddingHorizontal: spacing.sm,
+    flexWrap: 'wrap',
   },
   legendItem: {
     flexDirection: 'row',
@@ -341,5 +412,54 @@ const styles = StyleSheet.create({
   },
   legendText: {
     ...typography.makeTextStyle('xs', 'regular', colors.textSecondary),
+  },
+  section: {
+    marginTop: spacing.lg,
+  },
+  sectionTitle: {
+    ...typography.makeTextStyle('md', 'semibold', colors.textPrimary),
+    marginBottom: spacing.md,
+  },
+  dayLoadingWrap: {
+    paddingVertical: spacing.lg,
+    alignItems: 'center',
+  },
+  emptyDay: {
+    backgroundColor: colors.white,
+    borderRadius: spacing.borderRadius.md,
+    padding: spacing.lg,
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  emptyDayText: {
+    ...typography.makeTextStyle('sm', 'regular', colors.textSecondary),
+  },
+  bookingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.white,
+    borderRadius: spacing.borderRadius.md,
+    padding: spacing.md,
+    marginBottom: spacing.sm,
+    gap: spacing.sm,
+    elevation: 1,
+    shadowColor: colors.black,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+  },
+  bookingTime: {
+    ...typography.makeTextStyle('sm', 'semibold', colors.ocean),
+    minWidth: 52,
+  },
+  bookingInfo: {
+    flex: 1,
+  },
+  bookingCustomer: {
+    ...typography.makeTextStyle('sm', 'semibold', colors.textPrimary),
+  },
+  bookingService: {
+    ...typography.makeTextStyle('xs', 'regular', colors.textSecondary),
+    marginTop: 1,
   },
 });

@@ -4,6 +4,7 @@ import {
   Text,
   ScrollView,
   TouchableOpacity,
+  Switch,
   StyleSheet,
   Alert,
   KeyboardAvoidingView,
@@ -13,13 +14,13 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import AppHeader from '../../components/AppHeader';
 import AppInput from '../../components/AppInput';
 import AppButton from '../../components/AppButton';
-import { updateService } from '../../services/serviceService';
+import adminService from '../../services/adminService';
 import { VEHICLE_TYPES } from '../../constants/index';
 import colors from '../../theme/colors';
 import spacing from '../../theme/spacing';
 import typography from '../../theme/typography';
 
-const CATEGORIES = ['exterior', 'interior', 'full', 'premium'];
+const CATEGORIES = ['exterior', 'interior', 'full', 'premium', 'deep_clean', 'addon'];
 
 function SectionLabel({ text }) {
   return <Text style={styles.sectionLabel}>{text}</Text>;
@@ -36,6 +37,7 @@ export default function EditServiceScreen({ route, navigation }) {
     price: service.price != null ? String(service.price) : '',
     duration: service.duration != null ? String(service.duration) : '',
     imageUrl: service.imageUrl || '',
+    active: service.isActive !== undefined ? service.isActive : true,
   });
   const [errors, setErrors] = useState({});
   const [loading, setLoading] = useState(false);
@@ -58,7 +60,7 @@ export default function EditServiceScreen({ route, navigation }) {
     const errs = {};
     if (!form.name.trim()) errs.name = 'Service name is required.';
     if (!form.category) errs.category = 'Please select a category.';
-    if (!form.price || isNaN(Number(form.price)) || Number(form.price) < 0) {
+    if (!form.price || isNaN(Number(form.price)) || Number(form.price) <= 0) {
       errs.price = 'Enter a valid price.';
     }
     if (!form.duration || isNaN(Number(form.duration)) || Number(form.duration) < 1) {
@@ -75,7 +77,7 @@ export default function EditServiceScreen({ route, navigation }) {
     }
     try {
       setLoading(true);
-      await updateService(service._id, {
+      await adminService.updateService(service._id, {
         name: form.name.trim(),
         description: form.description.trim(),
         category: form.category,
@@ -83,6 +85,7 @@ export default function EditServiceScreen({ route, navigation }) {
         price: Number(form.price),
         duration: Number(form.duration),
         imageUrl: form.imageUrl.trim() || undefined,
+        isActive: form.active,
       });
       Alert.alert('Success', 'Service updated successfully!', [
         { text: 'OK', onPress: () => navigation.goBack() },
@@ -141,7 +144,7 @@ export default function EditServiceScreen({ route, navigation }) {
                   accessibilityLabel={cat}
                 >
                   <Text style={[styles.chipText, isSelected && styles.chipTextSelected]}>
-                    {cat.charAt(0).toUpperCase() + cat.slice(1)}
+                    {cat.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())}
                   </Text>
                 </TouchableOpacity>
               );
@@ -197,6 +200,17 @@ export default function EditServiceScreen({ route, navigation }) {
             placeholder="https://..."
             keyboardType="url"
           />
+
+          <View style={styles.switchRow}>
+            <Text style={styles.switchLabel}>Active</Text>
+            <Switch
+              value={form.active}
+              onValueChange={(v) => setField('active', v)}
+              trackColor={{ false: colors.softGray, true: colors.ocean + '66' }}
+              thumbColor={form.active ? colors.ocean : colors.textSecondary}
+              accessibilityLabel="Service active toggle"
+            />
+          </View>
 
           <AppButton
             title="Save Changes"
@@ -255,6 +269,18 @@ const styles = StyleSheet.create({
     ...typography.makeTextStyle('xs', 'regular', colors.error),
     marginTop: -spacing.sm,
     marginBottom: spacing.sm,
+  },
+  switchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: colors.white,
+    borderRadius: spacing.borderRadius.md,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+  },
+  switchLabel: {
+    ...typography.makeTextStyle('md', 'medium', colors.textPrimary),
   },
   submitBtn: {
     marginTop: spacing.md,

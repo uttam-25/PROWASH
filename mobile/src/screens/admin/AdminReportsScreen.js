@@ -10,8 +10,9 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import AppHeader from '../../components/AppHeader';
+import BookingCard from '../../components/BookingCard';
 import LoadingView from '../../components/LoadingView';
-import api from '../../services/api';
+import adminService from '../../services/adminService';
 import colors from '../../theme/colors';
 import spacing from '../../theme/spacing';
 import typography from '../../theme/typography';
@@ -46,8 +47,8 @@ export default function AdminReportsScreen({ navigation }) {
   const loadReports = useCallback(async () => {
     try {
       setError(null);
-      const response = await api.get('/admin/reports');
-      setReports(response.data?.data || response.data);
+      const response = await adminService.getReports();
+      setReports(response?.data || response);
     } catch (err) {
       setError('Failed to load reports. Please try again.');
     } finally {
@@ -103,8 +104,9 @@ export default function AdminReportsScreen({ navigation }) {
   const monthRevenue = reports?.thisMonthRevenue ?? 0;
   const totalCustomers = reports?.totalCustomers ?? 0;
   const bookingsByStatus = reports?.bookingsByStatus || {};
+  const recentBookingsList = (reports?.recentBookings || []).slice(0, 10);
 
-  // Normalize bookingsByStatus — may be array of {_id, count} or object {status:count}
+  // Normalize bookingsByStatus
   let statusBreakdown = [];
   if (Array.isArray(bookingsByStatus)) {
     statusBreakdown = bookingsByStatus.map((item) => ({
@@ -118,7 +120,13 @@ export default function AdminReportsScreen({ navigation }) {
     }));
   }
 
-  // Max count for bar scaling
+  const completedBookings =
+    statusBreakdown.find((s) => s.status === 'completed')?.count ??
+    (bookingsByStatus?.completed || 0);
+  const cancelledBookings =
+    statusBreakdown.find((s) => s.status === 'cancelled')?.count ??
+    (bookingsByStatus?.cancelled || 0);
+
   const maxCount = statusBreakdown.reduce((m, s) => Math.max(m, s.count), 1);
 
   return (
@@ -168,6 +176,16 @@ export default function AdminReportsScreen({ navigation }) {
             label="Total Customers"
             value={totalCustomers}
           />
+          <StatCard
+            icon="checkmark-circle-outline"
+            label="Completed"
+            value={completedBookings}
+          />
+          <StatCard
+            icon="close-circle-outline"
+            label="Cancelled"
+            value={cancelledBookings}
+          />
         </View>
 
         {/* Status bar chart */}
@@ -186,10 +204,7 @@ export default function AdminReportsScreen({ navigation }) {
                   <View style={styles.barTrack}>
                     {barFlex > 0 ? (
                       <View
-                        style={[
-                          styles.barFill,
-                          { flex: barFlex, backgroundColor: barColor },
-                        ]}
+                        style={[styles.barFill, { flex: barFlex, backgroundColor: barColor }]}
                       />
                     ) : null}
                     {emptyFlex > 0 ? (
@@ -200,6 +215,16 @@ export default function AdminReportsScreen({ navigation }) {
                 </View>
               );
             })}
+          </View>
+        ) : null}
+
+        {/* Recent bookings */}
+        {recentBookingsList.length > 0 ? (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Recent Bookings</Text>
+            {recentBookingsList.map((b) => (
+              <BookingCard key={b._id} booking={b} />
+            ))}
           </View>
         ) : null}
       </ScrollView>
@@ -261,6 +286,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.white,
     borderRadius: spacing.borderRadius.md,
     padding: spacing.md,
+    marginBottom: spacing.md,
     elevation: 1,
     shadowColor: colors.black,
     shadowOffset: { width: 0, height: 1 },
@@ -299,6 +325,13 @@ const styles = StyleSheet.create({
     width: 28,
     textAlign: 'right',
     ...typography.makeTextStyle('xs', 'semibold', colors.textPrimary),
+  },
+  section: {
+    marginBottom: spacing.md,
+  },
+  sectionTitle: {
+    ...typography.makeTextStyle('md', 'semibold', colors.textPrimary),
+    marginBottom: spacing.md,
   },
   errorContainer: {
     flex: 1,

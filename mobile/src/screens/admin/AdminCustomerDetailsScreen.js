@@ -5,17 +5,14 @@ import {
   ScrollView,
   TouchableOpacity,
   StyleSheet,
-  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import AppHeader from '../../components/AppHeader';
-import AppButton from '../../components/AppButton';
 import StatusBadge from '../../components/StatusBadge';
 import BookingCard from '../../components/BookingCard';
 import LoadingView from '../../components/LoadingView';
-import ConfirmDialog from '../../components/ConfirmDialog';
-import api from '../../services/api';
+import adminService from '../../services/adminService';
 import colors from '../../theme/colors';
 import spacing from '../../theme/spacing';
 import typography from '../../theme/typography';
@@ -41,22 +38,33 @@ function InfoRow({ icon, label, value }) {
   );
 }
 
+function StatBox({ label, value, color }) {
+  return (
+    <View style={styles.statBox}>
+      <Text style={[styles.statValue, { color: color || colors.textPrimary }]}>{value ?? 0}</Text>
+      <Text style={styles.statLabel}>{label}</Text>
+    </View>
+  );
+}
+
 export default function AdminCustomerDetailsScreen({ route, navigation }) {
   const { customerId } = route.params;
   const [customer, setCustomer] = useState(null);
-  const [bookings, setBookings] = useState([]);
+  const [stats, setStats] = useState({ total: 0, completed: 0, pending: 0, cancelled: 0 });
+  const [vehicles, setVehicles] = useState([]);
+  const [recentBookings, setRecentBookings] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [toggling, setToggling] = useState(false);
-  const [confirmVisible, setConfirmVisible] = useState(false);
   const [error, setError] = useState(null);
 
   const loadCustomer = useCallback(async () => {
     try {
       setError(null);
-      const response = await api.get('/admin/customers/' + customerId);
-      const data = response.data?.data || response.data;
+      const response = await adminService.getCustomerDetails(customerId);
+      const data = response?.data || response;
       setCustomer(data.customer || data);
-      setBookings(data.bookings || []);
+      setStats(data.stats || { total: 0, completed: 0, pending: 0, cancelled: 0 });
+      setVehicles(data.vehicles || []);
+      setRecentBookings((data.recentBookings || []).slice(0, 5));
     } catch (err) {
       setError('Failed to load customer details.');
     } finally {
@@ -67,24 +75,6 @@ export default function AdminCustomerDetailsScreen({ route, navigation }) {
   useEffect(() => {
     loadCustomer();
   }, [loadCustomer]);
-
-  const handleToggleActive = async () => {
-    try {
-      setToggling(true);
-      const response = await api.put('/admin/customers/' + customerId + '/toggle');
-      const updated = response.data?.data?.customer || response.data?.data || {};
-      setCustomer((prev) => ({ ...prev, isActive: updated.isActive ?? !prev.isActive }));
-      Alert.alert(
-        'Success',
-        `Customer has been ${updated.isActive ? 'activated' : 'deactivated'}.`
-      );
-    } catch {
-      Alert.alert('Error', 'Failed to update customer status.');
-    } finally {
-      setToggling(false);
-      setConfirmVisible(false);
-    }
-  };
 
   if (loading) {
     return (
@@ -124,8 +114,6 @@ export default function AdminCustomerDetailsScreen({ route, navigation }) {
     .join('')
     .toUpperCase();
 
-  const recentBookings = bookings.slice(0, 5);
-
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <AppHeader
@@ -146,6 +134,14 @@ export default function AdminCustomerDetailsScreen({ route, navigation }) {
           <StatusBadge status={customer.isActive ? 'active' : 'inactive'} />
         </View>
 
+        {/* Stats row */}
+        <View style={styles.statsRow}>
+          <StatBox label="Total" value={stats.total} color={colors.ocean} />
+          <StatBox label="Completed" value={stats.completed} color={colors.success} />
+          <StatBox label="Pending" value={stats.pending} color={colors.warning} />
+          <StatBox label="Cancelled" value={stats.cancelled} color={colors.error} />
+        </View>
+
         {/* Info */}
         <View style={styles.infoCard}>
           <InfoRow icon="mail-outline" label="Email" value={customer.email} />
@@ -153,14 +149,25 @@ export default function AdminCustomerDetailsScreen({ route, navigation }) {
           <InfoRow icon="calendar-outline" label="Member Since" value={formatDate(customer.createdAt)} />
         </View>
 
-        {/* Toggle action */}
-        <AppButton
-          title={customer.isActive ? 'Deactivate Account' : 'Activate Account'}
-          onPress={() => setConfirmVisible(true)}
-          variant={customer.isActive ? 'outline' : 'primary'}
-          loading={toggling}
-          style={styles.toggleBtn}
-        />
+        {/* Vehicles section */}
+        {vehicles.length > 0 ? (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Vehicles</Text>
+            {vehicles.map((v) => (
+              <View key={v._id} style={styles.vehicleRow} accessibilityRole="text">
+                <Ionicons name="car-outline" size={18} color={colors.ocean} style={styles.vehicleIcon} />
+                <View style={styles.vehicleInfo}>
+                  <Text style={styles.vehicleName}>
+                    {[v.make, v.model].filter(Boolean).join(' ') || 'Unknown Vehicle'}
+                  </Text>
+                  <Text style={styles.vehicleMeta}>
+                    {[v.type, v.licensePlate].filter(Boolean).join(' · ') || ''}
+                  </Text>
+                </View>
+              </View>
+            ))}
+          </View>
+        ) : null}
 
         {/* Recent bookings */}
         {recentBookings.length > 0 ? (
@@ -176,20 +183,6 @@ export default function AdminCustomerDetailsScreen({ route, navigation }) {
           </View>
         )}
       </ScrollView>
-
-      <ConfirmDialog
-        visible={confirmVisible}
-        title={customer.isActive ? 'Deactivate Customer' : 'Activate Customer'}
-        message={
-          customer.isActive
-            ? `Deactivate ${customer.name}? They will not be able to log in.`
-            : `Activate ${customer.name}? They will regain access to the app.`
-        }
-        confirmText={customer.isActive ? 'Deactivate' : 'Activate'}
-        onConfirm={handleToggleActive}
-        onCancel={() => setConfirmVisible(false)}
-        destructive={customer.isActive}
-      />
     </SafeAreaView>
   );
 }
@@ -231,6 +224,31 @@ const styles = StyleSheet.create({
   customerName: {
     ...typography.makeTextStyle('xl', 'bold', colors.textPrimary),
   },
+  statsRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  statBox: {
+    flex: 1,
+    backgroundColor: colors.white,
+    borderRadius: spacing.borderRadius.md,
+    padding: spacing.sm,
+    alignItems: 'center',
+    elevation: 1,
+    shadowColor: colors.black,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+  },
+  statValue: {
+    ...typography.makeTextStyle('xl', 'bold', colors.textPrimary),
+  },
+  statLabel: {
+    ...typography.makeTextStyle('xs', 'regular', colors.textSecondary),
+    textAlign: 'center',
+    marginTop: 2,
+  },
   infoCard: {
     backgroundColor: colors.white,
     borderRadius: spacing.borderRadius.md,
@@ -258,15 +276,38 @@ const styles = StyleSheet.create({
   infoValue: {
     ...typography.makeTextStyle('sm', 'regular', colors.textPrimary),
   },
-  toggleBtn: {
-    marginBottom: spacing.md,
-  },
   section: {
-    marginTop: spacing.sm,
+    marginBottom: spacing.md,
   },
   sectionTitle: {
     ...typography.makeTextStyle('md', 'semibold', colors.textPrimary),
     marginBottom: spacing.md,
+  },
+  vehicleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.white,
+    borderRadius: spacing.borderRadius.md,
+    padding: spacing.md,
+    marginBottom: spacing.sm,
+    elevation: 1,
+    shadowColor: colors.black,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+  },
+  vehicleIcon: {
+    marginRight: spacing.md,
+  },
+  vehicleInfo: {
+    flex: 1,
+  },
+  vehicleName: {
+    ...typography.makeTextStyle('md', 'semibold', colors.textPrimary),
+  },
+  vehicleMeta: {
+    ...typography.makeTextStyle('sm', 'regular', colors.textSecondary),
+    marginTop: 2,
   },
   noBookings: {
     backgroundColor: colors.white,

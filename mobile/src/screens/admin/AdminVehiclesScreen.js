@@ -1,10 +1,11 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
   FlatList,
   TouchableOpacity,
   TextInput,
+  ScrollView,
   StyleSheet,
   RefreshControl,
 } from 'react-native';
@@ -13,10 +14,17 @@ import { Ionicons } from '@expo/vector-icons';
 import AppHeader from '../../components/AppHeader';
 import LoadingView from '../../components/LoadingView';
 import EmptyState from '../../components/EmptyState';
-import api from '../../services/api';
+import adminService from '../../services/adminService';
 import colors from '../../theme/colors';
 import spacing from '../../theme/spacing';
 import typography from '../../theme/typography';
+
+const TYPE_FILTERS = [
+  { label: 'All', value: '' },
+  { label: 'Car', value: 'Car' },
+  { label: 'Bike', value: 'Bike' },
+  { label: 'Scooty', value: 'Scooty' },
+];
 
 const VEHICLE_ICONS = {
   Car: 'car-outline',
@@ -27,35 +35,64 @@ const VEHICLE_ICONS = {
   Van: 'car-outline',
 };
 
-function VehicleRow({ vehicle }) {
+function VehicleRow({ vehicle, expanded, onPress }) {
   const iconName = VEHICLE_ICONS[vehicle.type] || 'car-outline';
   const ownerName = vehicle.owner?.name || 'Unknown Owner';
 
   return (
-    <View style={styles.vehicleRow} accessibilityRole="text">
-      <View style={styles.iconWrap}>
-        <Ionicons name={iconName} size={24} color={colors.ocean} />
+    <TouchableOpacity
+      style={styles.vehicleRow}
+      onPress={onPress}
+      activeOpacity={0.8}
+      accessibilityRole="button"
+      accessibilityLabel={`${vehicle.make} ${vehicle.model}`}
+    >
+      <View style={styles.vehicleRowMain}>
+        <View style={styles.iconWrap}>
+          <Ionicons name={iconName} size={24} color={colors.ocean} />
+        </View>
+        <View style={styles.vehicleInfo}>
+          <Text style={styles.vehicleName} numberOfLines={1}>
+            {vehicle.make} {vehicle.model}
+          </Text>
+          <Text style={styles.ownerName} numberOfLines={1}>
+            {ownerName}
+          </Text>
+          {vehicle.licensePlate ? (
+            <View style={styles.platePill}>
+              <Text style={styles.plateText}>{vehicle.licensePlate}</Text>
+            </View>
+          ) : null}
+        </View>
+        <View style={styles.vehicleRight}>
+          <Text style={styles.vehicleType}>{vehicle.type}</Text>
+          {vehicle.color ? (
+            <Text style={styles.vehicleColor}>{vehicle.color}</Text>
+          ) : null}
+          <Ionicons
+            name={expanded ? 'chevron-up' : 'chevron-down'}
+            size={16}
+            color={colors.textSecondary}
+          />
+        </View>
       </View>
-      <View style={styles.vehicleInfo}>
-        <Text style={styles.vehicleName} numberOfLines={1}>
-          {vehicle.make} {vehicle.model}
-        </Text>
-        <Text style={styles.ownerName} numberOfLines={1}>
-          {ownerName}
-        </Text>
-        {vehicle.licensePlate ? (
-          <View style={styles.platePill}>
-            <Text style={styles.plateText}>{vehicle.licensePlate}</Text>
-          </View>
-        ) : null}
-      </View>
-      <View style={styles.vehicleRight}>
-        <Text style={styles.vehicleType}>{vehicle.type}</Text>
-        {vehicle.color ? (
-          <Text style={styles.vehicleColor}>{vehicle.color}</Text>
-        ) : null}
-      </View>
-    </View>
+      {expanded ? (
+        <View style={styles.expandedInfo}>
+          {vehicle.owner?.email ? (
+            <Text style={styles.expandedText}>
+              <Text style={styles.expandedLabel}>Email: </Text>
+              {vehicle.owner.email}
+            </Text>
+          ) : null}
+          {vehicle.owner?.phone ? (
+            <Text style={styles.expandedText}>
+              <Text style={styles.expandedLabel}>Phone: </Text>
+              {vehicle.owner.phone}
+            </Text>
+          ) : null}
+        </View>
+      ) : null}
+    </TouchableOpacity>
   );
 }
 
@@ -64,13 +101,18 @@ export default function AdminVehiclesScreen({ navigation }) {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState('');
+  const [activeType, setActiveType] = useState('');
+  const [expandedId, setExpandedId] = useState(null);
   const [error, setError] = useState(null);
 
-  const loadVehicles = useCallback(async () => {
+  const loadVehicles = useCallback(async (type, searchTerm) => {
     try {
       setError(null);
-      const response = await api.get('/admin/vehicles');
-      const list = response.data?.data?.vehicles || response.data?.data || [];
+      const data = await adminService.getVehicles({
+        type: type || undefined,
+        search: searchTerm?.trim() || undefined,
+      });
+      const list = data?.data?.vehicles || data?.data || [];
       setVehicles(list);
     } catch (err) {
       setError('Failed to load vehicles. Please try again.');
@@ -81,25 +123,27 @@ export default function AdminVehiclesScreen({ navigation }) {
   }, []);
 
   React.useEffect(() => {
-    loadVehicles();
-  }, [loadVehicles]);
+    loadVehicles(activeType, search);
+  }, [loadVehicles, activeType]);
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
-    loadVehicles();
-  }, [loadVehicles]);
+    loadVehicles(activeType, search);
+  }, [loadVehicles, activeType, search]);
 
-  const filtered = useMemo(() => {
-    if (!search.trim()) return vehicles;
-    const q = search.toLowerCase();
-    return vehicles.filter(
-      (v) =>
-        (v.licensePlate || '').toLowerCase().includes(q) ||
-        (v.owner?.name || '').toLowerCase().includes(q) ||
-        (v.make || '').toLowerCase().includes(q) ||
-        (v.model || '').toLowerCase().includes(q)
-    );
-  }, [vehicles, search]);
+  const handleTypeChange = (value) => {
+    setActiveType(value);
+    setLoading(true);
+  };
+
+  const handleSearchSubmit = () => {
+    setLoading(true);
+    loadVehicles(activeType, search);
+  };
+
+  const toggleExpanded = (id) => {
+    setExpandedId((prev) => (prev === id ? null : id));
+  };
 
   if (loading && !refreshing) {
     return (
@@ -122,19 +166,54 @@ export default function AdminVehiclesScreen({ navigation }) {
         onBack={() => navigation.goBack()}
       />
 
+      {/* Type filter chips */}
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={styles.chipBar}
+        contentContainerStyle={styles.chipBarContent}
+      >
+        {TYPE_FILTERS.map((f) => {
+          const isActive = activeType === f.value;
+          return (
+            <TouchableOpacity
+              key={f.value}
+              style={[styles.filterChip, isActive && styles.filterChipActive]}
+              onPress={() => handleTypeChange(f.value)}
+              accessibilityRole="button"
+              accessibilityLabel={`Filter ${f.label}`}
+            >
+              <Text style={[styles.filterChipText, isActive && styles.filterChipTextActive]}>
+                {f.label}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </ScrollView>
+
+      {/* Search bar */}
       <View style={styles.searchBar}>
         <Ionicons name="search-outline" size={18} color={colors.textSecondary} />
         <TextInput
           style={styles.searchInput}
           value={search}
           onChangeText={setSearch}
+          onSubmitEditing={handleSearchSubmit}
           placeholder="Search by plate or owner…"
           placeholderTextColor={colors.textSecondary}
           autoCapitalize="none"
+          returnKeyType="search"
           accessibilityLabel="Search vehicles"
         />
         {search.length > 0 ? (
-          <TouchableOpacity onPress={() => setSearch('')} accessibilityLabel="Clear search">
+          <TouchableOpacity
+            onPress={() => {
+              setSearch('');
+              setLoading(true);
+              loadVehicles(activeType, '');
+            }}
+            accessibilityLabel="Clear search"
+          >
             <Ionicons name="close-circle" size={18} color={colors.textSecondary} />
           </TouchableOpacity>
         ) : null}
@@ -143,18 +222,24 @@ export default function AdminVehiclesScreen({ navigation }) {
       {error ? (
         <View style={styles.errorContainer}>
           <Text style={styles.errorText}>{error}</Text>
-          <TouchableOpacity onPress={loadVehicles}>
+          <TouchableOpacity onPress={() => loadVehicles(activeType, search)}>
             <Text style={styles.retryText}>Retry</Text>
           </TouchableOpacity>
         </View>
       ) : (
         <FlatList
-          data={filtered}
+          data={vehicles}
           keyExtractor={(item) => item._id}
-          renderItem={({ item }) => <VehicleRow vehicle={item} />}
+          renderItem={({ item }) => (
+            <VehicleRow
+              vehicle={item}
+              expanded={expandedId === item._id}
+              onPress={() => toggleExpanded(item._id)}
+            />
+          )}
           contentContainerStyle={[
             styles.listContent,
-            filtered.length === 0 && styles.listEmpty,
+            vehicles.length === 0 && styles.listEmpty,
           ]}
           refreshControl={
             <RefreshControl
@@ -168,11 +253,7 @@ export default function AdminVehiclesScreen({ navigation }) {
             <EmptyState
               iconName="car-outline"
               title="No vehicles found"
-              subtitle={
-                search
-                  ? `No results for "${search}"`
-                  : 'Vehicles will appear here after customers add them.'
-              }
+              subtitle="Vehicles will appear here after customers add them."
             />
           }
           showsVerticalScrollIndicator={false}
@@ -186,6 +267,33 @@ const styles = StyleSheet.create({
   safe: {
     flex: 1,
     backgroundColor: colors.cloud,
+  },
+  chipBar: {
+    backgroundColor: colors.white,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    maxHeight: 52,
+  },
+  chipBarContent: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    gap: spacing.sm,
+  },
+  filterChip: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    borderRadius: spacing.borderRadius.full,
+    backgroundColor: colors.softGray,
+    marginRight: spacing.sm,
+  },
+  filterChipActive: {
+    backgroundColor: colors.ocean,
+  },
+  filterChipText: {
+    ...typography.makeTextStyle('sm', 'medium', colors.textSecondary),
+  },
+  filterChipTextActive: {
+    color: colors.white,
   },
   searchBar: {
     flexDirection: 'row',
@@ -209,8 +317,6 @@ const styles = StyleSheet.create({
     flexGrow: 1,
   },
   vehicleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
     backgroundColor: colors.white,
     borderRadius: spacing.borderRadius.md,
     padding: spacing.md,
@@ -220,6 +326,10 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.04,
     shadowRadius: 4,
+  },
+  vehicleRowMain: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   iconWrap: {
     width: 44,
@@ -254,13 +364,26 @@ const styles = StyleSheet.create({
   },
   vehicleRight: {
     alignItems: 'flex-end',
+    gap: 4,
   },
   vehicleType: {
     ...typography.makeTextStyle('xs', 'medium', colors.ocean),
   },
   vehicleColor: {
     ...typography.makeTextStyle('xs', 'regular', colors.textSecondary),
-    marginTop: 2,
+  },
+  expandedInfo: {
+    marginTop: spacing.sm,
+    paddingTop: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    gap: 4,
+  },
+  expandedText: {
+    ...typography.makeTextStyle('sm', 'regular', colors.textSecondary),
+  },
+  expandedLabel: {
+    ...typography.makeTextStyle('sm', 'semibold', colors.textPrimary),
   },
   errorContainer: {
     flex: 1,

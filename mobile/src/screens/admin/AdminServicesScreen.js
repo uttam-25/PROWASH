@@ -1,12 +1,14 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
   FlatList,
   TouchableOpacity,
   Switch,
+  TextInput,
   StyleSheet,
   RefreshControl,
+  ScrollView,
   Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -16,16 +18,20 @@ import StatusBadge from '../../components/StatusBadge';
 import LoadingView from '../../components/LoadingView';
 import EmptyState from '../../components/EmptyState';
 import ConfirmDialog from '../../components/ConfirmDialog';
-import { getServices, deleteService, updateService } from '../../services/serviceService';
+import adminService from '../../services/adminService';
 import colors from '../../theme/colors';
 import spacing from '../../theme/spacing';
 import typography from '../../theme/typography';
+
+const TYPE_FILTERS = ['All', 'Car', 'Bike', 'Scooty'];
 
 const CATEGORY_COLORS = {
   exterior: colors.ocean,
   interior: colors.aqua,
   full: colors.success,
   premium: colors.warning,
+  deep_clean: '#7B1FA2',
+  addon: '#00838F',
 };
 
 function ServiceRow({ service, onEdit, onDelete, onToggle }) {
@@ -82,12 +88,13 @@ export default function AdminServicesScreen({ navigation }) {
   const [refreshing, setRefreshing] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [error, setError] = useState(null);
+  const [typeFilter, setTypeFilter] = useState('');
+  const [search, setSearch] = useState('');
 
   const loadServices = useCallback(async () => {
     try {
       setError(null);
-      const data = await getServices();
-      // getServices returns {data:[...]} or the array directly
+      const data = await adminService.getServices({ includeInactive: true });
       const list = Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : [];
       setServices(list);
     } catch (err) {
@@ -109,7 +116,7 @@ export default function AdminServicesScreen({ navigation }) {
 
   const handleToggle = async (service, newValue) => {
     try {
-      await updateService(service._id, { isActive: newValue });
+      await adminService.updateService(service._id, { isActive: newValue });
       setServices((prev) =>
         prev.map((s) => (s._id === service._id ? { ...s, isActive: newValue } : s))
       );
@@ -121,7 +128,7 @@ export default function AdminServicesScreen({ navigation }) {
   const handleDeleteConfirm = async () => {
     if (!deleteTarget) return;
     try {
-      await deleteService(deleteTarget._id);
+      await adminService.deleteService(deleteTarget._id);
       setServices((prev) => prev.filter((s) => s._id !== deleteTarget._id));
     } catch {
       Alert.alert('Error', 'Failed to delete service.');
@@ -129,6 +136,22 @@ export default function AdminServicesScreen({ navigation }) {
       setDeleteTarget(null);
     }
   };
+
+  const filtered = useMemo(() => {
+    let list = services;
+    if (typeFilter && typeFilter !== '') {
+      list = list.filter(
+        (s) =>
+          Array.isArray(s.vehicleTypes) &&
+          s.vehicleTypes.some((t) => t.toLowerCase() === typeFilter.toLowerCase())
+      );
+    }
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      list = list.filter((s) => (s.name || '').toLowerCase().includes(q));
+    }
+    return list;
+  }, [services, typeFilter, search]);
 
   if (loading && !refreshing) {
     return (
@@ -167,6 +190,51 @@ export default function AdminServicesScreen({ navigation }) {
         }
       />
 
+      {/* Vehicle type filter chips */}
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={styles.chipBar}
+        contentContainerStyle={styles.chipBarContent}
+      >
+        {TYPE_FILTERS.map((t) => {
+          const val = t === 'All' ? '' : t;
+          const isActive = typeFilter === val;
+          return (
+            <TouchableOpacity
+              key={t}
+              style={[styles.filterChip, isActive && styles.filterChipActive]}
+              onPress={() => setTypeFilter(val)}
+              accessibilityRole="button"
+              accessibilityLabel={`Filter ${t}`}
+            >
+              <Text style={[styles.filterChipText, isActive && styles.filterChipTextActive]}>
+                {t}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </ScrollView>
+
+      {/* Search bar */}
+      <View style={styles.searchBar}>
+        <Ionicons name="search-outline" size={18} color={colors.textSecondary} />
+        <TextInput
+          style={styles.searchInput}
+          value={search}
+          onChangeText={setSearch}
+          placeholder="Search services…"
+          placeholderTextColor={colors.textSecondary}
+          autoCapitalize="none"
+          accessibilityLabel="Search services"
+        />
+        {search.length > 0 ? (
+          <TouchableOpacity onPress={() => setSearch('')} accessibilityLabel="Clear search">
+            <Ionicons name="close-circle" size={18} color={colors.textSecondary} />
+          </TouchableOpacity>
+        ) : null}
+      </View>
+
       {error ? (
         <View style={styles.errorContainer}>
           <Text style={styles.errorText}>{error}</Text>
@@ -176,7 +244,7 @@ export default function AdminServicesScreen({ navigation }) {
         </View>
       ) : (
         <FlatList
-          data={services}
+          data={filtered}
           keyExtractor={(item) => item._id}
           renderItem={({ item }) => (
             <ServiceRow
@@ -188,7 +256,7 @@ export default function AdminServicesScreen({ navigation }) {
           )}
           contentContainerStyle={[
             styles.listContent,
-            services.length === 0 && styles.listEmpty,
+            filtered.length === 0 && styles.listEmpty,
           ]}
           refreshControl={
             <RefreshControl
@@ -231,6 +299,48 @@ const styles = StyleSheet.create({
   },
   addBtn: {
     padding: 4,
+  },
+  chipBar: {
+    backgroundColor: colors.white,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    maxHeight: 52,
+  },
+  chipBarContent: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    gap: spacing.sm,
+  },
+  filterChip: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    borderRadius: spacing.borderRadius.full,
+    backgroundColor: colors.softGray,
+    marginRight: spacing.sm,
+  },
+  filterChipActive: {
+    backgroundColor: colors.ocean,
+  },
+  filterChipText: {
+    ...typography.makeTextStyle('sm', 'medium', colors.textSecondary),
+  },
+  filterChipTextActive: {
+    color: colors.white,
+  },
+  searchBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.white,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    gap: spacing.sm,
+  },
+  searchInput: {
+    flex: 1,
+    ...typography.makeTextStyle('md', 'regular', colors.textPrimary),
+    paddingVertical: 4,
   },
   listContent: {
     padding: spacing.md,

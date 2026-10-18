@@ -14,7 +14,7 @@ import AppHeader from '../../components/AppHeader';
 import StatusBadge from '../../components/StatusBadge';
 import LoadingView from '../../components/LoadingView';
 import EmptyState from '../../components/EmptyState';
-import api from '../../services/api';
+import adminService from '../../services/adminService';
 import colors from '../../theme/colors';
 import spacing from '../../theme/spacing';
 import typography from '../../theme/typography';
@@ -48,6 +48,9 @@ function CustomerRow({ customer, onPress }) {
         {customer.phone ? (
           <Text style={styles.customerPhone}>{customer.phone}</Text>
         ) : null}
+        {customer.totalBookings != null ? (
+          <Text style={styles.bookingsCount}>{customer.totalBookings} bookings</Text>
+        ) : null}
       </View>
       <View style={styles.customerRight}>
         <StatusBadge status={customer.isActive ? 'active' : 'inactive'} />
@@ -73,10 +76,12 @@ export default function AdminCustomersScreen({ navigation }) {
   const loadCustomers = useCallback(async (searchTerm) => {
     try {
       setError(null);
-      const params = {};
-      if (searchTerm) params.search = searchTerm;
-      const response = await api.get('/admin/customers', { params });
-      const list = response.data?.data?.customers || response.data?.data || [];
+      const data = await adminService.getCustomers({
+        search: searchTerm || undefined,
+        page: 1,
+        limit: 20,
+      });
+      const list = data?.data?.customers || data?.data || [];
       setCustomers(list);
     } catch (err) {
       setError('Failed to load customers. Please try again.');
@@ -247,6 +252,10 @@ const styles = StyleSheet.create({
   customerPhone: {
     ...typography.makeTextStyle('xs', 'regular', colors.textSecondary),
     marginTop: 1,
+  },
+  bookingsCount: {
+    ...typography.makeTextStyle('xs', 'medium', colors.ocean),
+    marginTop: 2,
   },
   customerRight: {
     alignItems: 'flex-end',

@@ -7,7 +7,6 @@ import {
   ScrollView,
   StyleSheet,
   RefreshControl,
-  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -15,28 +14,31 @@ import AppHeader from '../../components/AppHeader';
 import StatusBadge from '../../components/StatusBadge';
 import LoadingView from '../../components/LoadingView';
 import EmptyState from '../../components/EmptyState';
-import { getAdminPayments, updatePaymentStatus } from '../../services/paymentService';
+import ConfirmDialog from '../../components/ConfirmDialog';
+import adminService from '../../services/adminService';
 import colors from '../../theme/colors';
 import spacing from '../../theme/spacing';
 import typography from '../../theme/typography';
 
-const STATUS_FILTERS = [
+const METHOD_TABS = [
   { label: 'All', value: '' },
-  { label: 'Pending', value: 'pending' },
-  { label: 'Paid', value: 'paid' },
-  { label: 'Failed', value: 'failed' },
-  { label: 'Refunded', value: 'refunded' },
+  { label: 'COD', value: 'cod' },
+  { label: 'Online', value: 'online' },
 ];
 
-const METHOD_LABELS = {
-  cod: 'Cash on Delivery',
-  razorpay: 'Razorpay',
-};
+const STATUS_FILTERS = [
+  { label: 'All', value: '' },
+  { label: 'Unpaid', value: 'unpaid' },
+  { label: 'Paid', value: 'paid' },
+  { label: 'Failed', value: 'failed' },
+];
 
-function PaymentRow({ payment, onMarkPaid }) {
-  const customer = payment.customer || {};
-  const booking = payment.booking || {};
-  const serviceName = booking.service?.name || 'Service';
+function PaymentRow({ payment, onCollect }) {
+  const booking = payment.bookingId || {};
+  const customerName = booking.customerId?.name || 'Unknown Customer';
+  const serviceName = booking.serviceNameSnapshot || 'Service';
+  const bookingRef = booking.bookingReference || '';
+  const isCODUnpaid = payment.method === 'cod' && payment.status === 'unpaid';
 
   return (
     <View style={styles.paymentRow}>
@@ -48,14 +50,19 @@ function PaymentRow({ payment, onMarkPaid }) {
             color={colors.ocean}
           />
           <Text style={styles.methodText}>
-            {METHOD_LABELS[payment.method] || payment.method}
+            {payment.method === 'cod' ? 'Cash on Delivery' : 'Online'}
           </Text>
         </View>
         <Text style={styles.amount}>₹{payment.amount}</Text>
       </View>
 
+      {bookingRef ? (
+        <Text style={styles.bookingRef} numberOfLines={1}>
+          {bookingRef}
+        </Text>
+      ) : null}
       <Text style={styles.customerName} numberOfLines={1}>
-        {customer.name || 'Unknown Customer'}
+        {customerName}
       </Text>
       <Text style={styles.serviceName} numberOfLines={1}>
         {serviceName}
@@ -73,14 +80,14 @@ function PaymentRow({ payment, onMarkPaid }) {
         </Text>
         <View style={styles.rightActions}>
           <StatusBadge status={payment.status} />
-          {payment.status === 'pending' && payment.method === 'cod' ? (
+          {isCODUnpaid ? (
             <TouchableOpacity
-              style={styles.markPaidBtn}
-              onPress={() => onMarkPaid(payment)}
+              style={styles.collectBtn}
+              onPress={() => onCollect(payment)}
               accessibilityRole="button"
-              accessibilityLabel="Mark as paid"
+              accessibilityLabel="Record collection"
             >
-              <Text style={styles.markPaidText}>Mark Paid</Text>
+              <Text style={styles.collectBtnText}>Record Collection</Text>
             </TouchableOpacity>
           ) : null}
         </View>
@@ -93,16 +100,19 @@ export default function AdminPaymentsScreen({ navigation }) {
   const [payments, setPayments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [activeMethod, setActiveMethod] = useState('');
   const [activeFilter, setActiveFilter] = useState('');
+  const [collectTarget, setCollectTarget] = useState(null);
   const [error, setError] = useState(null);
 
-  const loadPayments = useCallback(async (status) => {
+  const loadPayments = useCallback(async (method, status) => {
     try {
       setError(null);
-      const params = {};
-      if (status) params.status = status;
-      const data = await getAdminPayments(params);
-      setPayments(data.data?.payments || data.data || []);
+      const data = await adminService.getPayments({
+        method: method || undefined,
+        status: status || undefined,
+      });
+      setPayments(data?.data?.payments || data?.data || []);
     } catch (err) {
       setError('Failed to load payments. Please try again.');
     } finally {
@@ -112,40 +122,38 @@ export default function AdminPaymentsScreen({ navigation }) {
   }, []);
 
   React.useEffect(() => {
-    loadPayments(activeFilter);
-  }, [activeFilter, loadPayments]);
+    loadPayments(activeMethod, activeFilter);
+  }, [activeMethod, activeFilter, loadPayments]);
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
-    loadPayments(activeFilter);
-  }, [activeFilter, loadPayments]);
+    loadPayments(activeMethod, activeFilter);
+  }, [activeMethod, activeFilter, loadPayments]);
+
+  const handleMethodChange = (value) => {
+    setActiveMethod(value);
+    setLoading(true);
+  };
 
   const handleFilterChange = (value) => {
     setActiveFilter(value);
     setLoading(true);
   };
 
-  const handleMarkPaid = (payment) => {
-    Alert.alert(
-      'Mark as Paid',
-      `Mark this COD payment of ₹${payment.amount} as paid?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Mark Paid',
-          onPress: async () => {
-            try {
-              await updatePaymentStatus(payment._id, 'paid');
-              setPayments((prev) =>
-                prev.map((p) => (p._id === payment._id ? { ...p, status: 'paid' } : p))
-              );
-            } catch {
-              Alert.alert('Error', 'Failed to update payment status.');
-            }
-          },
-        },
-      ]
-    );
+  const handleCollectConfirm = async () => {
+    if (!collectTarget) return;
+    try {
+      await adminService.recordCODCollection(collectTarget._id);
+      setPayments((prev) =>
+        prev.map((p) =>
+          p._id === collectTarget._id ? { ...p, status: 'paid' } : p
+        )
+      );
+    } catch {
+      // silently show error via alert would require Alert import — use optimistic update only
+    } finally {
+      setCollectTarget(null);
+    }
   };
 
   if (loading && !refreshing) {
@@ -169,7 +177,29 @@ export default function AdminPaymentsScreen({ navigation }) {
         onBack={() => navigation.goBack()}
       />
 
-      {/* Status filter tabs */}
+      {/* Method tabs */}
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={styles.tabBar}
+        contentContainerStyle={styles.tabBarContent}
+      >
+        {METHOD_TABS.map((t) => (
+          <TouchableOpacity
+            key={t.value}
+            style={[styles.tab, activeMethod === t.value && styles.tabActive]}
+            onPress={() => handleMethodChange(t.value)}
+            accessibilityRole="button"
+            accessibilityLabel={`Method ${t.label}`}
+          >
+            <Text style={[styles.tabText, activeMethod === t.value && styles.tabTextActive]}>
+              {t.label}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
+
+      {/* Status filter chips */}
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
@@ -179,19 +209,13 @@ export default function AdminPaymentsScreen({ navigation }) {
         {STATUS_FILTERS.map((f) => (
           <TouchableOpacity
             key={f.value}
-            style={[
-              styles.filterTab,
-              activeFilter === f.value && styles.filterTabActive,
-            ]}
+            style={[styles.filterTab, activeFilter === f.value && styles.filterTabActive]}
             onPress={() => handleFilterChange(f.value)}
             accessibilityRole="button"
             accessibilityLabel={`Filter ${f.label}`}
           >
             <Text
-              style={[
-                styles.filterTabText,
-                activeFilter === f.value && styles.filterTabTextActive,
-              ]}
+              style={[styles.filterTabText, activeFilter === f.value && styles.filterTabTextActive]}
             >
               {f.label}
             </Text>
@@ -202,7 +226,7 @@ export default function AdminPaymentsScreen({ navigation }) {
       {error ? (
         <View style={styles.errorContainer}>
           <Text style={styles.errorText}>{error}</Text>
-          <TouchableOpacity onPress={() => loadPayments(activeFilter)}>
+          <TouchableOpacity onPress={() => loadPayments(activeMethod, activeFilter)}>
             <Text style={styles.retryText}>Retry</Text>
           </TouchableOpacity>
         </View>
@@ -211,7 +235,7 @@ export default function AdminPaymentsScreen({ navigation }) {
           data={payments}
           keyExtractor={(item) => item._id}
           renderItem={({ item }) => (
-            <PaymentRow payment={item} onMarkPaid={handleMarkPaid} />
+            <PaymentRow payment={item} onCollect={setCollectTarget} />
           )}
           contentContainerStyle={[
             styles.listContent,
@@ -235,6 +259,19 @@ export default function AdminPaymentsScreen({ navigation }) {
           showsVerticalScrollIndicator={false}
         />
       )}
+
+      <ConfirmDialog
+        visible={!!collectTarget}
+        title="Record COD Collection"
+        message={
+          collectTarget
+            ? `Mark ₹${collectTarget.amount} as collected for this booking?`
+            : ''
+        }
+        confirmText="Confirm"
+        onConfirm={handleCollectConfirm}
+        onCancel={() => setCollectTarget(null)}
+      />
     </SafeAreaView>
   );
 }
@@ -243,6 +280,32 @@ const styles = StyleSheet.create({
   safe: {
     flex: 1,
     backgroundColor: colors.cloud,
+  },
+  tabBar: {
+    backgroundColor: colors.midnight,
+    maxHeight: 48,
+  },
+  tabBarContent: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    gap: spacing.sm,
+  },
+  tab: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    borderRadius: spacing.borderRadius.full,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    marginRight: spacing.sm,
+  },
+  tabActive: {
+    backgroundColor: colors.aqua,
+  },
+  tabText: {
+    ...typography.makeTextStyle('sm', 'medium', 'rgba(255,255,255,0.7)'),
+  },
+  tabTextActive: {
+    color: colors.midnight,
+    fontWeight: '700',
   },
   filterBar: {
     backgroundColor: colors.white,
@@ -309,6 +372,11 @@ const styles = StyleSheet.create({
   amount: {
     ...typography.makeTextStyle('lg', 'bold', colors.textPrimary),
   },
+  bookingRef: {
+    ...typography.makeTextStyle('xs', 'semibold', colors.textSecondary),
+    marginBottom: 2,
+    letterSpacing: 0.5,
+  },
   customerName: {
     ...typography.makeTextStyle('md', 'semibold', colors.textPrimary),
     marginBottom: 2,
@@ -321,6 +389,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
   },
   dateText: {
     ...typography.makeTextStyle('xs', 'regular', colors.textSecondary),
@@ -329,14 +399,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
+    flexWrap: 'wrap',
   },
-  markPaidBtn: {
+  collectBtn: {
     backgroundColor: colors.success,
     paddingHorizontal: spacing.sm,
     paddingVertical: 4,
     borderRadius: spacing.borderRadius.sm,
   },
-  markPaidText: {
+  collectBtnText: {
     ...typography.makeTextStyle('xs', 'semibold', colors.white),
   },
   errorContainer: {

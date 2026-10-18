@@ -21,6 +21,7 @@ import AdminCustomerDetailsScreen from '../screens/admin/AdminCustomerDetailsScr
 import AdminVehiclesScreen from '../screens/admin/AdminVehiclesScreen';
 
 // More stack
+import AdminMoreScreen from '../screens/admin/AdminMoreScreen';
 import AdminPaymentsScreen from '../screens/admin/AdminPaymentsScreen';
 import AdminCalendarScreen from '../screens/admin/AdminCalendarScreen';
 import AdminScheduleScreen from '../screens/admin/AdminScheduleScreen';
@@ -75,11 +76,13 @@ function CustomersStack() {
 function MoreStack() {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
-      <Stack.Screen name="AdminSettings" component={AdminSettingsScreen} />
+      <Stack.Screen name="AdminMore" component={AdminMoreScreen} />
       <Stack.Screen name="AdminPayments" component={AdminPaymentsScreen} />
       <Stack.Screen name="AdminCalendar" component={AdminCalendarScreen} />
       <Stack.Screen name="AdminSchedule" component={AdminScheduleScreen} />
       <Stack.Screen name="AdminReports" component={AdminReportsScreen} />
+      <Stack.Screen name="AdminSettings" component={AdminSettingsScreen} />
+      <Stack.Screen name="AdminVehicles" component={AdminVehiclesScreen} />
     </Stack.Navigator>
   );
 }
