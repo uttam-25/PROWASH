@@ -100,11 +100,14 @@ export default function AdminReportsScreen({ navigation }) {
   // Extract data with safe defaults
   const totalBookings = reports?.totalBookings ?? 0;
   const totalRevenue = reports?.totalRevenue ?? 0;
-  const todayBookings = reports?.todayBookings ?? 0;
+  const todayAppointments = reports?.todayAppointments ?? 0;
   const monthRevenue = reports?.thisMonthRevenue ?? 0;
   const totalCustomers = reports?.totalCustomers ?? 0;
   const bookingsByStatus = reports?.bookingsByStatus || {};
   const recentBookingsList = (reports?.recentBookings || []).slice(0, 10);
+  const monthlyRevenue = reports?.monthlyRevenue || [];
+  const bookingsByVehicleType = reports?.bookingsByVehicleType || { Car: 0, Bike: 0, Scooty: 0 };
+  const bookingsByService = (reports?.bookingsByService || []).slice(0, 5);
 
   // Normalize bookingsByStatus
   let statusBreakdown = [];
@@ -163,7 +166,7 @@ export default function AdminReportsScreen({ navigation }) {
           <StatCard
             icon="today-outline"
             label="Today's Bookings"
-            value={todayBookings}
+            value={todayAppointments}
           />
           <StatCard
             icon="trending-up-outline"
@@ -217,6 +220,85 @@ export default function AdminReportsScreen({ navigation }) {
             })}
           </View>
         ) : null}
+
+        {/* Monthly Revenue chart */}
+        <View style={styles.chartCard}>
+          <Text style={styles.chartTitle}>Monthly Revenue</Text>
+          {monthlyRevenue.length === 0 ? (
+            <Text style={styles.emptyText}>No monthly data yet.</Text>
+          ) : (
+            (() => {
+              const maxRevenue = Math.max(...monthlyRevenue.map((m) => m.revenue), 1);
+              return monthlyRevenue.map((item) => {
+                const barFlex = item.revenue / maxRevenue;
+                const emptyFlex = 1 - barFlex;
+                return (
+                  <View key={item.month} style={styles.barRow} accessibilityRole="text">
+                    <Text style={styles.barLabel}>{item.month}</Text>
+                    <View style={styles.barTrack}>
+                      {barFlex > 0 ? (
+                        <View
+                          style={[
+                            styles.barFill,
+                            { flex: barFlex, backgroundColor: colors.ocean },
+                          ]}
+                        />
+                      ) : null}
+                      {emptyFlex > 0 ? (
+                        <View style={[styles.barEmpty, { flex: emptyFlex }]} />
+                      ) : null}
+                    </View>
+                    <View style={styles.revenueValueWrap}>
+                      <Text style={styles.barCount}>
+                        ₹{Number(item.revenue).toLocaleString('en-IN')}
+                      </Text>
+                      <Text style={styles.barSubCount}>{item.bookings} bookings</Text>
+                    </View>
+                  </View>
+                );
+              });
+            })()
+          )}
+        </View>
+
+        {/* Bookings by Vehicle Type */}
+        <View style={styles.chartCard}>
+          <Text style={styles.chartTitle}>Bookings by Vehicle Type</Text>
+          <View style={styles.vehicleRow}>
+            {[
+              { key: 'Car', icon: 'car-outline' },
+              { key: 'Bike', icon: 'bicycle-outline' },
+              { key: 'Scooty', icon: 'speedometer-outline' },
+            ].map(({ key, icon }) => (
+              <View key={key} style={styles.vehicleChip}>
+                <Ionicons name={icon} size={22} color={colors.ocean} />
+                <Text style={styles.vehicleChipCount}>
+                  {bookingsByVehicleType[key] ?? 0}
+                </Text>
+                <Text style={styles.vehicleChipLabel}>{key}</Text>
+              </View>
+            ))}
+          </View>
+        </View>
+
+        {/* Top Services */}
+        <View style={styles.chartCard}>
+          <Text style={styles.chartTitle}>Top Services</Text>
+          {bookingsByService.length === 0 ? (
+            <Text style={styles.emptyText}>No service data yet.</Text>
+          ) : (
+            bookingsByService.map((item, idx) => (
+              <View key={item.serviceName || idx} style={styles.serviceRow}>
+                <Text style={styles.serviceName} numberOfLines={1}>
+                  {item.serviceName}
+                </Text>
+                <Text style={styles.serviceStats}>
+                  {item.count} bookings | ₹{Number(item.revenue).toLocaleString('en-IN')}
+                </Text>
+              </View>
+            ))
+          )}
+        </View>
 
         {/* Recent bookings */}
         {recentBookingsList.length > 0 ? (
@@ -332,6 +414,55 @@ const styles = StyleSheet.create({
   sectionTitle: {
     ...typography.makeTextStyle('md', 'semibold', colors.textPrimary),
     marginBottom: spacing.md,
+  },
+  revenueValueWrap: {
+    alignItems: 'flex-end',
+    minWidth: 80,
+  },
+  barSubCount: {
+    ...typography.makeTextStyle('xs', 'regular', colors.textSecondary),
+    textAlign: 'right',
+  },
+  emptyText: {
+    ...typography.makeTextStyle('sm', 'regular', colors.textSecondary),
+    textAlign: 'center',
+    paddingVertical: spacing.sm,
+  },
+  vehicleRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    justifyContent: 'space-between',
+  },
+  vehicleChip: {
+    flex: 1,
+    backgroundColor: colors.cloud,
+    borderRadius: spacing.borderRadius.md,
+    padding: spacing.md,
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  vehicleChipCount: {
+    ...typography.makeTextStyle('xl', 'bold', colors.textPrimary),
+  },
+  vehicleChipLabel: {
+    ...typography.makeTextStyle('xs', 'regular', colors.textSecondary),
+  },
+  serviceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    gap: spacing.sm,
+  },
+  serviceName: {
+    flex: 1,
+    ...typography.makeTextStyle('sm', 'medium', colors.textPrimary),
+  },
+  serviceStats: {
+    ...typography.makeTextStyle('xs', 'regular', colors.textSecondary),
+    textAlign: 'right',
   },
   errorContainer: {
     flex: 1,
