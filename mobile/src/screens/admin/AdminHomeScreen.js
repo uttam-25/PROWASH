@@ -1,24 +1,22 @@
-import React from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
   ScrollView,
   StyleSheet,
   TouchableOpacity,
+  RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../hooks/useAuth';
+import BookingCard from '../../components/BookingCard';
+import LoadingView from '../../components/LoadingView';
+import api from '../../services/api';
+import { getAdminBookings } from '../../services/bookingService';
 import colors from '../../theme/colors';
 import spacing from '../../theme/spacing';
 import typography from '../../theme/typography';
-
-const STATS = [
-  { label: 'Bookings Today', icon: 'calendar-outline', value: '--' },
-  { label: 'Pending', icon: 'time-outline', value: '--' },
-  { label: 'Revenue', icon: 'cash-outline', value: '--' },
-  { label: 'Customers', icon: 'people-outline', value: '--' },
-];
 
 function StatCard({ label, icon, value }) {
   return (
@@ -32,8 +30,69 @@ function StatCard({ label, icon, value }) {
   );
 }
 
-export default function AdminHomeScreen() {
-  const { user, logout } = useAuth();
+export default function AdminHomeScreen({ navigation }) {
+  const { user } = useAuth();
+  const [stats, setStats] = useState({
+    todayBookings: '--',
+    pending: '--',
+    revenue: '--',
+    customers: '--',
+  });
+  const [recentBookings, setRecentBookings] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const loadDashboard = useCallback(async () => {
+    try {
+      const [reportsRes, bookingsRes] = await Promise.allSettled([
+        api.get('/admin/reports'),
+        getAdminBookings({ limit: 5 }),
+      ]);
+
+      if (reportsRes.status === 'fulfilled') {
+        const data = reportsRes.value.data?.data || reportsRes.value.data || {};
+        setStats({
+          todayBookings: data.todayBookings ?? 0,
+          pending: data.bookingsByStatus?.pending ?? 0,
+          revenue: `₹${Number(data.thisMonthRevenue ?? data.totalRevenue ?? 0).toLocaleString('en-IN')}`,
+          customers: data.totalCustomers ?? 0,
+        });
+      }
+
+      if (bookingsRes.status === 'fulfilled') {
+        const list = bookingsRes.value.data?.bookings || bookingsRes.value.data || [];
+        setRecentBookings(Array.isArray(list) ? list.slice(0, 5) : []);
+      }
+    } catch {
+      // leave stats as placeholders
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    loadDashboard();
+  }, [loadDashboard]);
+
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    loadDashboard();
+  }, [loadDashboard]);
+
+  if (loading && !refreshing) {
+    return (
+      <SafeAreaView style={styles.safe} edges={['top']}>
+        <View style={styles.header}>
+          <View style={styles.headerLeft}>
+            <Text style={styles.badge}>Admin</Text>
+            <Text style={styles.heading}>Dashboard</Text>
+          </View>
+        </View>
+        <LoadingView message="Loading dashboard…" />
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -43,19 +102,19 @@ export default function AdminHomeScreen() {
           <Text style={styles.badge}>Admin</Text>
           <Text style={styles.heading}>Dashboard</Text>
         </View>
-        <TouchableOpacity
-          onPress={logout}
-          style={styles.logoutBtn}
-          accessibilityLabel="Logout"
-          accessibilityRole="button"
-        >
-          <Ionicons name="log-out-outline" size={22} color={colors.white} />
-        </TouchableOpacity>
       </View>
 
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            colors={[colors.ocean]}
+            tintColor={colors.ocean}
+          />
+        }
       >
         {/* Admin info card */}
         <View style={styles.infoCard}>
@@ -69,19 +128,47 @@ export default function AdminHomeScreen() {
         {/* Stats grid */}
         <Text style={styles.sectionTitle}>Overview</Text>
         <View style={styles.statsGrid}>
-          {STATS.map((stat) => (
-            <StatCard key={stat.label} {...stat} />
-          ))}
+          <StatCard
+            label="Bookings Today"
+            icon="calendar-outline"
+            value={stats.todayBookings}
+          />
+          <StatCard
+            label="Pending"
+            icon="time-outline"
+            value={stats.pending}
+          />
+          <StatCard
+            label="Revenue"
+            icon="cash-outline"
+            value={stats.revenue}
+          />
+          <StatCard
+            label="Customers"
+            icon="people-outline"
+            value={stats.customers}
+          />
         </View>
 
-        {/* Phase 2 notice */}
-        <View style={styles.notice}>
-          <Ionicons name="information-circle-outline" size={18} color={colors.ocean} />
-          <Text style={styles.noticeText}>
-            Full admin features — bookings, customers, services, payments, and
-            reports — will be available in Phase 2.
-          </Text>
+        {/* Recent bookings */}
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>Recent Bookings</Text>
+          <TouchableOpacity
+            onPress={() => navigation.navigate('BookingsTab')}
+            accessibilityRole="button"
+            accessibilityLabel="View all bookings"
+          >
+            <Text style={styles.seeAll}>See all</Text>
+          </TouchableOpacity>
         </View>
+
+        {recentBookings.length > 0 ? (
+          recentBookings.map((b) => <BookingCard key={b._id} booking={b} />)
+        ) : (
+          <View style={styles.noBookings}>
+            <Text style={styles.noBookingsText}>No recent bookings.</Text>
+          </View>
+        )}
       </ScrollView>
     </SafeAreaView>
   );
@@ -111,11 +198,9 @@ const styles = StyleSheet.create({
   heading: {
     ...typography.makeTextStyle('xl', 'bold', colors.white),
   },
-  logoutBtn: {
-    padding: spacing.sm,
-  },
   scrollContent: {
     padding: spacing.lg,
+    paddingBottom: spacing.xxl,
   },
   infoCard: {
     flexDirection: 'row',
@@ -146,6 +231,16 @@ const styles = StyleSheet.create({
   sectionTitle: {
     ...typography.makeTextStyle('lg', 'semibold', colors.textPrimary),
     marginBottom: spacing.md,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing.md,
+    marginTop: spacing.sm,
+  },
+  seeAll: {
+    ...typography.makeTextStyle('sm', 'semibold', colors.ocean),
   },
   statsGrid: {
     flexDirection: 'row',
@@ -185,17 +280,13 @@ const styles = StyleSheet.create({
     ...typography.makeTextStyle('xs', 'regular', colors.textSecondary),
     textAlign: 'center',
   },
-  notice: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    backgroundColor: 'rgba(20,125,171,0.08)',
+  noBookings: {
+    backgroundColor: colors.white,
     borderRadius: spacing.borderRadius.md,
-    padding: spacing.md,
-    gap: spacing.sm,
+    padding: spacing.lg,
+    alignItems: 'center',
   },
-  noticeText: {
+  noBookingsText: {
     ...typography.makeTextStyle('sm', 'regular', colors.textSecondary),
-    flex: 1,
-    lineHeight: 20,
   },
 });
