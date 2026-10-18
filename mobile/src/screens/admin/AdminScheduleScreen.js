@@ -190,7 +190,7 @@ export default function AdminScheduleScreen() {
       Alert.alert('Invalid', 'Break times must be in HH:MM format.');
       return;
     }
-    setBreaks((prev) => [...prev, { start: newBreakStart, end: newBreakEnd }]);
+    setBreaks((prev) => [...prev, { startTime: newBreakStart, endTime: newBreakEnd }]);
     setNewBreakStart('');
     setNewBreakEnd('');
   };
@@ -428,7 +428,7 @@ export default function AdminScheduleScreen() {
           {breaks.map((b, idx) => (
             <View key={idx} style={styles.listItemRow}>
               <Text style={styles.listItemText}>
-                {b.start} – {b.end}
+                {b.startTime} – {b.endTime}
               </Text>
               <TouchableOpacity
                 onPress={() => handleDeleteBreak(idx)}

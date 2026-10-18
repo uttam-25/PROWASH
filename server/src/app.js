@@ -9,7 +9,6 @@ import serviceRoutes from './routes/serviceRoutes.js';
 import availabilityRoutes from './routes/availabilityRoutes.js';
 import bookingRoutes from './routes/bookingRoutes.js';
 import paymentRoutes from './routes/paymentRoutes.js';
-import customerRoutes from './routes/customerRoutes.js';
 import notificationRoutes from './routes/notificationRoutes.js';
 import adminRoutes from './routes/adminRoutes.js';
 import errorHandler from './middleware/errorHandler.js';
@@ -57,9 +56,6 @@ app.use('/api/bookings', bookingRoutes);
 
 // Payment routes
 app.use('/api/payments', paymentRoutes);
-
-// Admin customer management routes
-app.use('/api/admin/customers', customerRoutes);
 
 // Notification routes
 app.use('/api/notifications', notificationRoutes);
