@@ -1,0 +1,38 @@
+{
+  "id": "FEAT-001",
+  "type": "feat",
+  "description": "Backend: notification service helpers, updated notification controller+routes (PATCH, unreadCount, ?read=false filter), full payment controller replacement (createRazorpayOrder, verifyPayment, handleWebhook, getMyPayments with correct field names), updated payment routes, bookingController Payment field fixes + notification wiring, adminController notification helper wiring, razorpay npm package installation.",
+  "status": "completed",
+  "steps": [
+    "1. Rewrite server/src/services/notificationService.js: keep existing createNotification(userId,title,body,type,data) and sendPushNotification unchanged. Add six exported async helpers below them — notifyBookingCreated(booking, customer), notifyBookingConfirmed(booking, customer), notifyBookingCancelled(booking, customer), notifyPaymentConfirmed(booking, customer), notifyWashStarted(booking, customer), notifyWashCompleted(booking, customer). Each calls createNotification(booking.customerId, title, body, type, { bookingId: booking._id }). See phase5-plan.md item 1 for exact title/body/type strings.",
+
+    "2. Update server/src/controllers/notificationController.js — three changes: (a) getMyNotifications: add ?read=false filter (if req.query.read === 'false' add isRead:false to filter), add unreadCount via Notification.countDocuments({user, isRead:false}), return { success:true, data:{ notifications, unreadCount } }. (b) markRead: no logic change, just update comment from PUT to PATCH. (c) markAllRead: return { success:true, data:{ count: result.modifiedCount } } instead of message string.",
+
+    "3. Update server/src/routes/notificationRoutes.js: change both router.put calls to router.patch. Final order: GET /, PATCH /read-all, PATCH /:id/read.",
+
+    "4. Full replacement of server/src/controllers/paymentController.js. Imports: crypto, Booking, Payment, AppError, notifyPaymentConfirmed. New functions: createRazorpayOrder (503 if Razorpay not configured via env check, otherwise dynamic import razorpay and create order), verifyPayment (HMAC-SHA256 signature check, update payment+booking on success, set failed on mismatch), handleWebhook (HMAC-SHA256 of JSON.stringify(req.body), handle payment.captured/payment.failed/refund.processed events, always return 200), getMyPayments (paginated, populate bookingId). Fixed existing: getPayment and getAllPayments use customerId/bookingId field names. updatePaymentStatus validStatuses includes 'unpaid', remove nonexistent paidAt assignment. See phase5-plan.md item 4 for complete logic.",
+
+    "5. Update server/src/routes/paymentRoutes.js: add imports for createRazorpayOrder, verifyPayment, handleWebhook. Route order: POST /webhook (no protect), POST /create-order (protect), POST /verify (protect), GET /my (protect), GET /:id (protect), GET /admin/payments (protect+requireAdmin), PUT /admin/payments/:id/status (protect+requireAdmin). Webhook must be before /:id.",
+
+    "6. Fix server/src/controllers/bookingController.js — three fixes: (a) createBooking: change Payment.create fields from {booking, customer, method:'razorpay'} to {bookingId:booking._id, customerId:req.user._id, method:paymentMethod}. (b) Replace inline Notification.create in createBooking with notifyBookingCreated(booking, req.user).catch(console.error). (c) Replace inline Notification.create in cancelBooking with notifyBookingCancelled(booking, req.user).catch(console.error). Add import { notifyBookingCreated, notifyBookingCancelled } from '../services/notificationService.js'. Keep import Notification (still used in rescheduleBooking).",
+
+    "7. Update server/src/controllers/adminController.js — (a) In updateBookingStatus: replace the single generic Notification.create block with status-specific helpers: confirmed→notifyBookingConfirmed, in_progress→notifyWashStarted, completed→notifyWashCompleted, else→keep inline Notification.create for cancelled/rejected. All fire-and-forget with .catch(console.error). (b) In recordCODCollection: replace Notification.create block with notifyPaymentConfirmed(booking, null).catch(console.error) guarded by if(booking). Add import { notifyBookingConfirmed, notifyWashStarted, notifyWashCompleted, notifyPaymentConfirmed } from '../services/notificationService.js'. Keep import Notification for the else branch.",
+
+    "8. Add 'razorpay': '^2.9.2' to server/package.json dependencies. Add RAZORPAY_KEY_ID=, RAZORPAY_KEY_SECRET=, RAZORPAY_WEBHOOK_SECRET= to server/.env.example. Run npm install in server/."
+  ],
+  "acceptance_criteria": [
+    "node --check passes on all 7 modified server files with exit 0",
+    "npm install in server/ exits 0 and razorpay appears in node_modules",
+    "POST /api/payments/create-order with valid auth but no Razorpay env keys returns HTTP 503 with code='RAZORPAY_NOT_CONFIGURED'",
+    "GET /api/notifications?read=false returns { data: { notifications: [], unreadCount: 0 } } shape (requires auth token)",
+    "PATCH /api/notifications/read-all returns { data: { count: N } } shape",
+    "Server starts without errors: node src/server.js binds port and connects MongoDB"
+  ],
+  "verification": [
+    "cd c:\\Users\\Dell\\Desktop\\PROWASH\\server && node --check src/services/notificationService.js && node --check src/controllers/notificationController.js && node --check src/routes/notificationRoutes.js && node --check src/controllers/paymentController.js && node --check src/routes/paymentRoutes.js && node --check src/controllers/bookingController.js && node --check src/controllers/adminController.js",
+    "cd c:\\Users\\Dell\\Desktop\\PROWASH\\server && npm install",
+    "Start server with `node src/server.js` and confirm it starts without import/syntax errors"
+  ],
+  "blocked_reason": null,
+  "findings": "All 7 server files syntax-checked and pass (exit 0). razorpay@2.9.2 installed in server/node_modules. Server starts cleanly: 'MongoDB connected' and 'Server running on port 5000'. Key facts for FEAT-002: notification routes are now PATCH (not PUT); GET /api/notifications returns { data: { notifications, unreadCount } } shape (not plain array); GET /api/payments/my returns paginated { data: { payments, total, page, pages } }; POST /api/payments/create-order returns 503 with code='RAZORPAY_NOT_CONFIGURED' when RAZORPAY_KEY_ID/KEY_SECRET env vars are absent; POST /api/payments/webhook is registered with no auth middleware; payment model fields are bookingId/customerId (not booking/customer); bookingController.createBooking now creates Payment with method='cod'|'online' (not 'razorpay'); notification helpers are exported from server/src/services/notificationService.js."
+}

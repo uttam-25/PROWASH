@@ -1,0 +1,7 @@
+{
+  "task_id": "task-phase2-prowash",
+  "task_description": "PROWASH Phase 2: implement all backend models/routes/controllers and all mobile screens, services, components, and navigators for vehicles, services, bookings, payments, notifications, and admin management — building on the Phase 1 auth/scaffold foundation.",
+  "status": "pending",
+  "feature_order": ["FEAT-001", "FEAT-002", "FEAT-003", "FEAT-004", "FEAT-005"],
+  "blocked_reason": null
+}

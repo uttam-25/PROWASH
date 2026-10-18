@@ -1,41 +1,38 @@
 # Phase 4 Integration Fix Summary
 
-**Iteration:** 1 (no prior verdict.json)
+## Iteration: Verdict findings (iteration 2)
 
-## Issues Found and Fixed
+### Finding 1 — AdminScheduleScreen.js: working-days type mismatch
 
-### 1. Route conflict — `customerRoutes` shadowing `adminController` customer endpoints (server)
+**Problem:** The Schedule model stores `workingDays` as an array of full day-name strings (`['Monday','Tuesday',...]`). `applyScheduleToState` was assigning this string array directly to the `workingDays` state, but the UI checked `workingDays.includes(idx)` where `idx` is a numeric index (0–6). A string array never contains a number, so every day chip always rendered as unselected, and `handleSaveDays` sent the stale numeric defaults back to the server.
 
-**File:** `server/src/app.js`
-
-**Problem:**  
-`app.use('/api/admin/customers', customerRoutes)` was mounted before `app.use('/api/admin', adminRoutes)`. Because Express matches routes in registration order, all requests to `/api/admin/customers` and `/api/admin/customers/:id` were handled by the old `customerController` (via `customerRoutes`) rather than the new `adminController` functions added in FEAT-001.
-
-The old `customerController.getAllCustomers` returned `data.items` (not `data.customers`) and did not include the `totalBookings` aggregation. The old `customerController.getCustomer` returned an incomplete shape: no `stats`, no `vehicles`, and used wrong populate fields (`customer` instead of `customerId`). The mobile screens (`AdminCustomersScreen`, `AdminCustomerDetailsScreen`) were rewritten in FEAT-002 to expect the new response shape from `adminController`.
-
-**Fix:**  
-Removed `import customerRoutes from './routes/customerRoutes.js'` and the `app.use('/api/admin/customers', customerRoutes)` mount entirely. All `/api/admin/customers` traffic now correctly flows to `adminRoutes` → `adminController.getCustomers` / `adminController.getCustomerDetails`, which return the expected `data.customers`, `data.stats`, `data.vehicles`, and `data.recentBookings` shapes.
-
-The `toggleCustomerActive` endpoint (`PUT /api/admin/customers/:id/toggle`) from the old `customerRoutes` is intentionally not re-added — FEAT-002 step 6 explicitly removed the toggle-active button and all related state from `AdminCustomerDetailsScreen`.
-
----
-
-### 2. Break field name mismatch — `start`/`end` vs `startTime`/`endTime` (mobile)
+**Fix applied:**
+- Added `DAY_NAMES` constant: `['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday']`
+- `applyScheduleToState`: when the server value is a string array, convert to numeric indices via `DAY_NAMES.indexOf(n)`; falls back to the existing numeric default `[1,2,3,4,5,6]` if the field is empty or already numeric.
+- `handleSaveDays`: converts numeric indices back to full names (`workingDays.map(i => DAY_NAMES[i])`) before calling `adminService.updateSchedule`.
 
 **File:** `mobile/src/screens/admin/AdminScheduleScreen.js`
 
-**Problem:**  
-The Schedule model's `breakSchema` uses field names `startTime` and `endTime`. In `AdminScheduleScreen`, the `handleAddBreak` function was building new break objects with `{ start, end }` (wrong keys). When those breaks were saved to the server and then re-loaded, the display loop `{b.start} – {b.end}` would render empty strings because the server returns `startTime`/`endTime`.
+---
 
-**Fix:**  
-- Changed `handleAddBreak` to create `{ startTime: newBreakStart, endTime: newBreakEnd }`.
-- Changed the breaks render loop to read `{b.startTime} – {b.endTime}`.
+### Finding 2 — AdminPaymentsScreen.js: silent collect failure
+
+**Problem:** `handleCollectConfirm` swallowed errors with a no-op comment. If `recordCODCollection` failed (network error, server 400, etc.) the user would see no feedback — the dialog closed silently while the collection was not recorded on the server.
+
+**Fix applied:**
+- Added `Alert` to the `react-native` import list.
+- Added `Alert.alert('Error', err.response?.data?.message || 'Failed to record collection. Please try again.')` in the catch block so failures are surfaced to the user.
+
+**File:** `mobile/src/screens/admin/AdminPaymentsScreen.js`
 
 ---
 
 ## Verification
 
-- `node -e "import('./src/app.js').then(...)"` → `app loaded OK`
-- `node -e "import('./src/routes/adminRoutes.js').then(...)"` → `adminRoutes loaded OK`
-- `node -e "import('./src/controllers/adminController.js').then(m=>console.log(Object.keys(m).join(', ')))"` → all 16 exports confirmed
-- `npx expo export --platform android` → exit 0, no error lines
+- `node -e "import('./src/controllers/adminController.js').then(...)"` — all 16 exports load OK
+- `node -e "import('./src/routes/adminRoutes.js').then(...)"` — adminRoutes loads OK
+- `npx expo export --platform android` — exited 0, no error lines
+
+## Commit
+
+`fix: Phase 4 integration fixes` — commit `a5cc682` on `master`

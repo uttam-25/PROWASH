@@ -1,0 +1,33 @@
+{
+  "id": "FEAT-002",
+  "type": "feat",
+  "description": "Mobile: paymentService new methods, notificationService PATCH+getNotifications, PaymentScreen full replacement (post-booking Razorpay screen with COD fallback), BookWashScreen online payment enablement and navigation fix, CustomerHomeScreen unread badge, NotificationsScreen response parsing fix. Depends on FEAT-001 (backend routes must exist for mobile calls to work).",
+  "status": "completed",
+  "steps": [
+    "1. Update mobile/src/services/paymentService.js: add createRazorpayOrder(bookingId) — POST /payments/create-order — and verifyPayment(data) — POST /payments/verify. Keep all four existing functions unchanged.",
+
+    "2. Replace mobile/src/services/notificationService.js entirely: export getNotifications(unreadOnly=false) that calls GET /notifications with params={read:'false'} if unreadOnly, export getMyNotifications() as alias calling getNotifications(false), export markRead(id) using api.patch, export markAllRead() using api.patch.",
+
+    "3. Full replacement of mobile/src/screens/customer/PaymentScreen.js as a post-booking screen. Route params: { bookingId, bookingReference, amount, serviceName }. Three states: 'loading' (LoadingView), 'cod_fallback' (booking confirmed, pay cash message + bookingReference + View My Bookings button → BookingsTab), 'error' (ErrorView with retry), 'ready' (show order info + dev note about react-native-razorpay not installed + View My Bookings button). On mount: call paymentService.createRazorpayOrder(bookingId); if 503 or code=RAZORPAY_NOT_CONFIGURED → cod_fallback; if error → error state; if success → ready state. Never crash. Always show bookingReference. Always provide navigation back. Do NOT import react-native-razorpay. See phase5-plan.md item 11 for complete logic.",
+
+    "4. Fix mobile/src/screens/customer/BookWashScreen.js — two changes: (a) In renderStep4, replace the static disabled <View> for 'Pay Online' with a live <TouchableOpacity> using same chip styling as COD, calling setPaymentMethod('online') on press. Remove paymentChipDisabled style and 'Coming Soon' badge text. (b) In handleConfirmBooking, after successful booking creation: if paymentMethod==='online' navigate to 'Payment' with { bookingId: booking._id, bookingReference: booking.bookingReference, amount: selectedService.price, serviceName: selectedService.name }; else navigate to 'BookingSuccess' as before. booking = result.data.",
+
+    "5. Add unread notification badge to mobile/src/screens/customer/CustomerHomeScreen.js: add unreadCount state (default 0), import notificationService, inside useFocusEffect callback call notificationService.getNotifications(true).then(data => setUnreadCount(data.data?.unreadCount ?? 0)).catch(()=>{}) fire-and-forget. Update bell icon TouchableOpacity to show a red circle badge (position:absolute, top:0, right:0) with count when unreadCount > 0. Add badge and badgeText styles. Add position:'relative' to headerBtn style.",
+
+    "6. Fix mobile/src/screens/customer/NotificationsScreen.js: in loadNotifications, change `data.notifications || data.data || []` to `data.data?.notifications || data.notifications || []` to correctly parse the new response shape { success, data: { notifications, unreadCount } }."
+  ],
+  "acceptance_criteria": [
+    "mobile/src/services/paymentService.js exports createRazorpayOrder and verifyPayment",
+    "mobile/src/services/notificationService.js exports getNotifications, getMyNotifications, markRead (PATCH), markAllRead (PATCH)",
+    "PaymentScreen renders without crash for both cod_fallback and ready states; never imports react-native-razorpay",
+    "BookWashScreen 'Pay Online' chip is selectable and selecting it + confirming navigates to PaymentScreen with correct params",
+    "CustomerHomeScreen shows a red badge on the bell icon when unreadCount > 0",
+    "NotificationsScreen correctly extracts notification array from data.data.notifications",
+    "npx expo export --platform android exits 0"
+  ],
+  "verification": [
+    "cd c:\\Users\\Dell\\Desktop\\PROWASH\\mobile && npx expo export --platform android"
+  ],
+  "blocked_reason": null,
+  "findings": "All 6 mobile steps implemented and verified. npx expo export --platform android exits 0 (1167 modules bundled, 3.69 MB Android bundle). Changes: (1) paymentService.js: added createRazorpayOrder(bookingId) POST /payments/create-order and verifyPayment(data) POST /payments/verify; (2) notificationService.js: full replacement — getNotifications(unreadOnly), getMyNotifications alias, markRead/markAllRead now use api.patch; (3) PaymentScreen.js: full replacement as post-booking screen with loading/cod_fallback/error/ready states — never imports react-native-razorpay, always shows bookingReference, navigates to BookingsTab; (4) BookWashScreen.js: Pay Online chip is now a live TouchableOpacity, handleConfirmBooking navigates to 'Payment' with bookingId/bookingReference/amount/serviceName when paymentMethod==='online'; (5) CustomerHomeScreen.js: unreadCount state, getNotifications(true) fetched on useFocusEffect fire-and-forget, red badge shown on bell icon when count > 0; (6) NotificationsScreen.js: loadNotifications now uses data.data?.notifications || data.notifications || [] to correctly parse new response shape."
+}

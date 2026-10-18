@@ -1,0 +1,43 @@
+{
+  "id": "FEAT-001",
+  "type": "feat",
+  "description": "Scaffold the Node.js/Express/MongoDB backend for PROWASH Phase 1. Creates the complete server directory structure, all config, models, controllers, routes, middleware, utilities, and a seed script. Implements auth endpoints: POST /api/auth/register, POST /api/auth/login, POST /api/auth/forgot-password, POST /api/auth/reset-password/:token, GET /api/auth/me. Provides GET /api/health. Protects routes with JWT middleware. Seeds the first admin account. This feature is independent of FEAT-002 and must be implemented first so the mobile app has a real API to connect to.",
+  "status": "completed",
+  "steps": [
+    "1. Create server/package.json with: name 'prowash-server', type 'module', scripts {start:'node src/server.js', dev:'nodemon src/server.js', seed:'node scripts/seedAdmin.js'}, dependencies: express, mongoose, bcryptjs, jsonwebtoken, dotenv, cors, express-validator, nodemailer, morgan, helmet. devDependencies: nodemon.",
+    "2. Create server/.env.example with variables: PORT=5000, MONGO_URI=mongodb://localhost:27017/prowash, JWT_SECRET=your_jwt_secret_here, JWT_EXPIRE=7d, NODE_ENV=development, EMAIL_HOST=, EMAIL_PORT=587, EMAIL_USER=, EMAIL_PASS=, ADMIN_EMAIL=admin@prowash.com, ADMIN_PASSWORD=Admin@1234, ADMIN_NAME=ProWash Admin. Create server/.env as a copy of .env.example with the same placeholder values (the coder running the app will fill in real values).",
+    "3. Create server/src/config/db.js — exports a default async connectDB() function that calls mongoose.connect(process.env.MONGO_URI) and logs 'MongoDB connected: <host>' on success or throws on failure.",
+    "4. Create server/src/models/User.js — Mongoose schema with fields: name (String, required, trim, maxlength 50), email (String, required, unique, lowercase, trim, match email regex), password (String, required, minlength 6, select:false), role (String, enum ['customer','admin'], default 'customer'), phone (String, trim), avatar (String), resetPasswordToken (String), resetPasswordExpires (Date), isActive (Boolean, default true), timestamps:true. Pre-save hook hashes password with bcryptjs (saltRounds 10) when modified. Instance method comparePassword(candidate) returns bcryptjs.compare result.",
+    "5. Create server/src/utils/generateToken.js — exports generateToken(userId) which signs { id: userId } with JWT_SECRET and JWT_EXPIRE, returns the token string. Exports generateResetToken() which returns { token: rawToken, hash: crypto.createHash('sha256').update(rawToken).digest('hex'), expires: Date.now()+3600000 }. Use Node's built-in crypto module.",
+    "6. Create server/src/utils/sendEmail.js — exports sendEmail({ to, subject, text, html }) using nodemailer createTransport from EMAIL_HOST/PORT/USER/PASS env vars. In development (NODE_ENV !== 'production') log the email to console instead of sending if credentials are not set. Never throw on missing credentials in dev mode — just log a warning.",
+    "7. Create server/src/middleware/errorHandler.js — Express error-handling middleware (4 args). Reads err.statusCode (default 500) and err.message (default 'Server Error'). Returns JSON { success:false, message, stack(dev only) }. Also export a class AppError(message, statusCode) that extends Error.",
+    "8. Create server/src/middleware/auth.js — exports protect(req,res,next): extracts Bearer token from Authorization header, verifies JWT, loads user from DB (excluding password), attaches to req.user, calls next() or returns 401. Exports requireAdmin(req,res,next): checks req.user.role==='admin', returns 403 if not.",
+    "9. Create server/src/middleware/validate.js — exports validate(schema) middleware using express-validator: runs schema checks, collects errors, returns 400 JSON { success:false, errors:[{field,message}] } if any, else calls next(). Export named validation rule arrays: registerRules, loginRules, forgotPasswordRules, resetPasswordRules.",
+    "10. Create server/src/controllers/authController.js — export named async functions: register(req,res,next): validates role is not 'admin', creates User, returns 201 with token and user object (no password). login(req,res,next): finds user by email (select +password), compares password, returns token and user. getMe(req,res,next): returns req.user. forgotPassword(req,res,next): finds user by email, generates reset token, saves hash+expiry to user, calls sendEmail with reset link (DEEP_LINK://reset-password/:rawToken), returns 200. resetPassword(req,res,next): hashes the token param, finds user where resetPasswordToken matches and resetPasswordExpires > now, sets new password, clears token fields, returns new JWT.",
+    "11. Create server/src/routes/authRoutes.js — Express Router: POST /register (registerRules, validate, register), POST /login (loginRules, validate, login), GET /me (protect, getMe), POST /forgot-password (forgotPasswordRules, validate, forgotPassword), POST /reset-password/:token (resetPasswordRules, validate, resetPassword).",
+    "12. Create server/src/services/notificationService.js — stub that exports sendPushNotification(userId, title, body) which logs the notification and returns a resolved Promise. This will be wired to Expo Push in a later phase.",
+    "13. Create server/src/app.js — initializes Express, applies helmet(), cors({origin:'*'}), morgan('dev'), express.json(), express.urlencoded({extended:true}). Mounts GET /api/health returning {status:'ok',timestamp:new Date()}. Mounts /api/auth from authRoutes. Applies errorHandler as last middleware. Exports the app.",
+    "14. Create server/src/server.js — imports dotenv/config, connectDB, and app. Calls connectDB() then app.listen(PORT). Handles unhandledRejection to close server and exit.",
+    "15. Create server/scripts/seedAdmin.js — standalone script (not imported by app): imports dotenv/config, connectDB, User model. Checks if any admin exists. If not, creates one using ADMIN_EMAIL, ADMIN_PASSWORD, ADMIN_NAME from env with role 'admin'. Logs result. Calls process.exit(0).",
+    "16. Run cd server && npm install to install dependencies. Then run node scripts/seedAdmin.js and node src/server.js briefly to confirm no syntax errors. Fix any issues found."
+  ],
+  "acceptance_criteria": [
+    "cd server && npm install exits with code 0",
+    "node scripts/seedAdmin.js prints 'Admin seeded successfully' or 'Admin already exists'",
+    "node src/server.js starts without error, prints 'MongoDB connected' and 'Server running on port 5000' (requires a real MONGO_URI in .env)",
+    "curl http://localhost:5000/api/health returns {status:'ok'} with HTTP 200",
+    "POST /api/auth/register with valid body returns 201 with token and user",
+    "POST /api/auth/login with valid credentials returns 200 with token and user",
+    "GET /api/auth/me with valid Bearer token returns the authenticated user",
+    "POST /api/auth/register with role:'admin' in body is rejected (400 or 403)",
+    "GET /api/auth/me without token returns 401"
+  ],
+  "verification": [
+    "cd c:\\Users\\Dell\\Desktop\\PROWASH\\server && npm install",
+    "cd c:\\Users\\Dell\\Desktop\\PROWASH\\server && node scripts/seedAdmin.js",
+    "Start server: cd c:\\Users\\Dell\\Desktop\\PROWASH\\server && node src/server.js (requires .env with MONGO_URI)",
+    "curl http://localhost:5000/api/health"
+  ],
+  "blocked_reason": null,
+  "findings": "FEAT-002 notes: API base URL pattern is http://<host>:5000/api (PORT defaults to 5000, configurable via .env PORT). Auth endpoints: POST /api/auth/register, POST /api/auth/login, GET /api/auth/me (Bearer token required). JWT is returned as { token, user } in all auth responses. The mobile app should store the token with SecureStore and send it as 'Authorization: Bearer <token>'. MongoDB is available at localhost:27017/prowash per .env. Admin seed ran successfully (admin@prowash.com / Admin@1234). npm install completed with 142 packages. app.js imports cleanly."
+}

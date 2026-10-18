@@ -1,0 +1,7 @@
+{
+  "task_id": "task-phase4-prowash",
+  "task_description": "Phase 4 of PROWASH: backend admin functions (schedule/customers/vehicles/payments) + Payment model update + mobile adminService + complete all stub admin screens + AdminMoreScreen + AdminNavigator update",
+  "status": "pending",
+  "feature_order": ["FEAT-001", "FEAT-002"],
+  "blocked_reason": null
+}

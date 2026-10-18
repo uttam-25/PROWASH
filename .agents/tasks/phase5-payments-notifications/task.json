@@ -1,0 +1,7 @@
+{
+  "task_id": "task-phase5-payments-notifications",
+  "task_description": "Phase 5 of PROWASH: implement full payment (Razorpay + COD) and notification (unread badge, PATCH endpoints, semantic helpers) across server and mobile app.",
+  "status": "pending",
+  "feature_order": ["FEAT-001", "FEAT-002"],
+  "blocked_reason": null
+}
