@@ -11,7 +11,7 @@ const SERVICE_CATEGORIES = ['Car', 'Bike', 'Scooty']
 
 export default function PartnerRegisterPage() {
   const navigate = useNavigate()
-  const { updateUser } = useAuth()
+  const { setSession } = useAuth()
   const [loading, setLoading] = useState(false)
   const [selectedCategories, setSelectedCategories] = useState([])
 
@@ -46,9 +46,7 @@ export default function PartnerRegisterPage() {
       })
       const { token } = res.data
       const user = res.data.data?.user || res.data.user
-      localStorage.setItem('prowash_token', token)
-      localStorage.setItem('prowash_user', JSON.stringify(user))
-      updateUser(user)
+      setSession(token, user)
       toast.success('Partner account created!')
       navigate('/partner')
     } catch (err) {

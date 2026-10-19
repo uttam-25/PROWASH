@@ -53,7 +53,13 @@ export function AuthProvider({ children }) {
     dispatch({ type: 'SET_USER', payload: { user, token: state.token } })
   }
 
-  return <AuthContext.Provider value={{...state, login, register, logout, updateUser}}>{children}</AuthContext.Provider>
+  function setSession(token, user) {
+    localStorage.setItem('prowash_token', token)
+    localStorage.setItem('prowash_user', JSON.stringify(user))
+    dispatch({ type: 'SET_USER', payload: { user, token } })
+  }
+
+  return <AuthContext.Provider value={{...state, login, register, logout, updateUser, setSession}}>{children}</AuthContext.Provider>
 }
 
 export function useAuth() {

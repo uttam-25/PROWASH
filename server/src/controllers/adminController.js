@@ -832,6 +832,10 @@ export const verifyPartner = async (req, res, next) => {
 export const deactivatePartner = async (req, res, next) => {
   try {
     const { id } = req.params;
+    const user = await User.findOne({ _id: id, role: 'partner' });
+    if (!user) {
+      return next(new AppError('Partner not found', 404));
+    }
     await Promise.all([
       User.findByIdAndUpdate(id, { $set: { isActive: false } }),
       PartnerProfile.findOneAndUpdate({ userId: id }, { $set: { isActive: false } }),

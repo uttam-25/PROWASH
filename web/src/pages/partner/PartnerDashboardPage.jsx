@@ -77,7 +77,8 @@ export default function PartnerDashboardPage() {
     let socket
     import('socket.io-client').then(({ io }) => {
       const apiUrl = import.meta.env.VITE_API_URL || window.location.origin
-      socket = io(apiUrl, { path: '/socket.io', transports: ['websocket', 'polling'] })
+      const token = localStorage.getItem('prowash_token')
+      socket = io(apiUrl, { path: '/socket.io', transports: ['websocket', 'polling'], auth: { token } })
       socketRef.current = socket
       if (user?._id) {
         socket.emit('join:partner', { partnerId: user._id })

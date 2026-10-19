@@ -128,6 +128,12 @@ export const toggleAvailability = async (req, res, next) => {
 // ---------------------------------------------------------------------------
 export const getNearbyRequests = async (req, res, next) => {
   try {
+    // Only verified partners may see job requests
+    const profile = await PartnerProfile.findOne({ userId: req.user._id });
+    if (!profile?.isVerified) {
+      return next(new AppError('Your account is not yet verified by admin', 403));
+    }
+
     const requests = await Booking.find({
       status: 'searching_partner',
       partnerId: null,
@@ -150,6 +156,12 @@ export const getNearbyRequests = async (req, res, next) => {
 export const acceptRequest = async (req, res, next) => {
   try {
     const { bookingId } = req.params;
+
+    // Only verified partners may accept jobs
+    const partnerProfile = await PartnerProfile.findOne({ userId: req.user._id });
+    if (!partnerProfile?.isVerified) {
+      return next(new AppError('Your account is not yet verified by admin', 403));
+    }
 
     // Atomic findOneAndUpdate to prevent double-accepts
     const booking = await Booking.findOneAndUpdate(
@@ -234,48 +246,57 @@ const PARTNER_TRANSITIONS = {
 export const updateJobStatus = async (req, res, next) => {
   try {
     const { bookingId } = req.params;
-    const { status } = req.body;
+    const { status: newStatus } = req.body;
 
-    if (!status) {
+    if (!newStatus) {
       return next(new AppError('status is required', 400));
     }
 
-    const booking = await Booking.findOne({ _id: bookingId, partnerId: req.user._id });
-    if (!booking) {
+    // Read current booking first to validate the transition (no write yet)
+    const current = await Booking.findOne({ _id: bookingId, partnerId: req.user._id });
+    if (!current) {
       return next(new AppError('Job not found', 404));
     }
 
-    const allowed = PARTNER_TRANSITIONS[booking.status] || [];
-    if (!allowed.includes(status)) {
+    const allowed = PARTNER_TRANSITIONS[current.status] || [];
+    if (!allowed.includes(newStatus)) {
       return next(
         new AppError(
-          `Cannot transition from '${booking.status}' to '${status}'. Valid: [${allowed.join(', ')}]`,
+          `Cannot transition from '${current.status}' to '${newStatus}'. Valid: [${allowed.join(', ')}]`,
           400
         )
       );
     }
 
     const now = new Date();
-    const update = {
-      status,
-      $push: {
-        statusHistory: {
-          status,
-          changedAt: now,
-          changedBy: req.user._id,
-          note: '',
+    const setFields = { status: newStatus };
+    if (newStatus === 'partner_arrived') setFields.partnerArrivedAt = now;
+    if (newStatus === 'in_progress') setFields.serviceStartedAt = now;
+    if (newStatus === 'completed') setFields.serviceCompletedAt = now;
+
+    // Atomic write: condition on current status so a concurrent push fails
+    const updated = await Booking.findOneAndUpdate(
+      { _id: bookingId, partnerId: req.user._id, status: current.status },
+      {
+        $set: setFields,
+        $push: {
+          statusHistory: {
+            status: newStatus,
+            changedAt: now,
+            changedBy: req.user._id,
+            note: '',
+          },
         },
       },
-    };
+      { new: true }
+    );
 
-    if (status === 'partner_arrived') update.partnerArrivedAt = now;
-    if (status === 'in_progress') update.serviceStartedAt = now;
-    if (status === 'completed') update.serviceCompletedAt = now;
-
-    const updated = await Booking.findByIdAndUpdate(bookingId, update, { new: true });
+    if (!updated) {
+      return next(new AppError('Status was updated concurrently — please refresh', 409));
+    }
 
     // On completion: update partner stats
-    if (status === 'completed') {
+    if (newStatus === 'completed') {
       await PartnerProfile.findOneAndUpdate(
         { userId: req.user._id },
         {
@@ -290,7 +311,7 @@ export const updateJobStatus = async (req, res, next) => {
     // Emit socket event
     try {
       const { emitToBooking } = await import('../services/socketService.js');
-      emitToBooking(bookingId, 'booking:status_update', { bookingId, status });
+      emitToBooking(bookingId, 'booking:status_update', { bookingId, status: newStatus });
     } catch {}
 
     res.json({ success: true, data: { booking: updated } });
