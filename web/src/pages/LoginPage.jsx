@@ -21,14 +21,14 @@ export default function LoginPage() {
     setError('')
     try {
       const user = await login(data)
-      if (user.role === 'owner') {
+      if (user.role === 'admin') {
         navigate('/admin')
       } else {
         navigate('/dashboard')
       }
     } catch (err) {
-      const msg = err?.response?.data?.message || 'Invalid credentials. Please try again.'
-      setError(msg)
+      // Axios interceptor re-throws as a plain Error with the message already extracted
+      setError(err.message || 'Invalid credentials. Please try again.')
     }
   }
 

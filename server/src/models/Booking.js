@@ -53,7 +53,7 @@ const bookingSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ['pending', 'confirmed', 'in_progress', 'completed', 'cancelled', 'rejected', 'rescheduled'],
+      enum: ['pending', 'confirmed', 'searching_partner', 'partner_assigned', 'partner_on_way', 'partner_arrived', 'in_progress', 'completed', 'cancelled', 'rejected', 'rescheduled'],
       default: 'pending',
       index: true,
     },
@@ -90,6 +90,19 @@ const bookingSchema = new mongoose.Schema(
       type: [statusHistorySchema],
       default: [],
     },
+    partnerId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', index: true, default: null },
+    partnerAssignedAt: { type: Date },
+    partnerArrivedAt: { type: Date },
+    serviceStartedAt: { type: Date },
+    serviceCompletedAt: { type: Date },
+    customerLocation: {
+      address: { type: String },
+      lat: { type: Number },
+      lng: { type: Number },
+    },
+    beforePhotos: { type: [String], default: [] },
+    afterPhotos: { type: [String], default: [] },
+    isImmediate: { type: Boolean, default: false },
   },
   { timestamps: true }
 );

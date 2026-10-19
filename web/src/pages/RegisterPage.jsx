@@ -32,8 +32,7 @@ export default function RegisterPage() {
       toast.success('Account created! Please sign in.')
       navigate('/login')
     } catch (err) {
-      const msg = err?.response?.data?.message || 'Registration failed. Please try again.'
-      setError(msg)
+      setError(err.message || 'Registration failed. Please try again.')
     }
   }
 

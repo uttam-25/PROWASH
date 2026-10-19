@@ -38,7 +38,7 @@ export default function AdminDashboardPage() {
       setDashboard(dashRes.data.data)
       setReports(repRes.data.data)
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to load dashboard.')
+      setError(err.message || 'Failed to load dashboard.')
     } finally {
       setLoading(false)
     }

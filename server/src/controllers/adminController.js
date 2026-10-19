@@ -6,6 +6,7 @@ import Service from '../models/Service.js';
 import Notification from '../models/Notification.js';
 import Schedule from '../models/Schedule.js';
 import Vehicle from '../models/Vehicle.js';
+import PartnerProfile from '../models/PartnerProfile.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { notifyBookingConfirmed, notifyWashStarted, notifyWashCompleted, notifyPaymentConfirmed } from '../services/notificationService.js';
 
@@ -73,6 +74,10 @@ export const getAdminBookings = async (req, res, next) => {
 const ALLOWED_TRANSITIONS = {
   pending: ['confirmed', 'rejected', 'cancelled'],
   confirmed: ['in_progress', 'cancelled', 'rescheduled'],
+  searching_partner: ['partner_assigned', 'cancelled'],
+  partner_assigned: ['partner_on_way', 'cancelled'],
+  partner_on_way: ['partner_arrived', 'cancelled'],
+  partner_arrived: ['in_progress', 'cancelled'],
   in_progress: ['completed'],
   rescheduled: ['confirmed', 'cancelled'],
   completed: [],
@@ -712,6 +717,123 @@ export const recordCODCollection = async (req, res, next) => {
     });
 
     res.json({ success: true, data: payment });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ---------------------------------------------------------------------------
+// GET /api/admin/partners  (protect + requireAdmin)
+// ---------------------------------------------------------------------------
+export const getPartners = async (req, res, next) => {
+  try {
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.min(50, Math.max(1, parseInt(req.query.limit) || 20));
+    const skip = (page - 1) * limit;
+
+    const matchFilter = { role: 'partner' };
+    if (req.query.search) {
+      const searchRegex = new RegExp(req.query.search, 'i');
+      matchFilter.$or = [{ name: searchRegex }, { email: searchRegex }];
+    }
+
+    const total = await User.countDocuments(matchFilter);
+
+    const partners = await User.aggregate([
+      { $match: matchFilter },
+      {
+        $lookup: {
+          from: 'partnerprofiles',
+          localField: '_id',
+          foreignField: 'userId',
+          as: 'profile',
+        },
+      },
+      { $addFields: { profile: { $arrayElemAt: ['$profile', 0] } } },
+      { $sort: { createdAt: -1 } },
+      { $skip: skip },
+      { $limit: limit },
+    ]);
+
+    res.json({
+      success: true,
+      data: { partners, total, page, pages: Math.ceil(total / limit) },
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ---------------------------------------------------------------------------
+// GET /api/admin/partners/:id  (protect + requireAdmin)
+// ---------------------------------------------------------------------------
+export const getPartnerById = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+
+    const partner = await User.findOne({ _id: id, role: 'partner' });
+    if (!partner) {
+      return next(new AppError('Partner not found', 404));
+    }
+
+    const [profile, recentJobs] = await Promise.all([
+      PartnerProfile.findOne({ userId: id }),
+      Booking.find({ partnerId: id })
+        .sort({ createdAt: -1 })
+        .limit(10)
+        .populate('serviceId', 'name category price')
+        .populate('vehicleId', 'make model type licensePlate')
+        .populate('customerId', 'name email phone'),
+    ]);
+
+    res.json({
+      success: true,
+      data: {
+        partner,
+        profile,
+        recentJobs,
+        stats: {
+          completedJobs: profile?.completedJobs || 0,
+          totalEarnings: profile?.totalEarnings || 0,
+        },
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ---------------------------------------------------------------------------
+// PATCH /api/admin/partners/:id/verify  (protect + requireAdmin)
+// ---------------------------------------------------------------------------
+export const verifyPartner = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const profile = await PartnerProfile.findOneAndUpdate(
+      { userId: id },
+      { $set: { isVerified: true } },
+      { new: true }
+    );
+    if (!profile) {
+      return next(new AppError('Partner profile not found', 404));
+    }
+    res.json({ success: true, data: { profile } });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ---------------------------------------------------------------------------
+// PATCH /api/admin/partners/:id/deactivate  (protect + requireAdmin)
+// ---------------------------------------------------------------------------
+export const deactivatePartner = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    await Promise.all([
+      User.findByIdAndUpdate(id, { $set: { isActive: false } }),
+      PartnerProfile.findOneAndUpdate({ userId: id }, { $set: { isActive: false } }),
+    ]);
+    res.json({ success: true });
   } catch (err) {
     next(err);
   }

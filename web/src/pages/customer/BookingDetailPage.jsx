@@ -46,7 +46,7 @@ export default function BookingDetailPage() {
       const res = await bookingsAPI.getBooking(id)
       setBooking(res.data.data.booking)
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to load booking.')
+      setError(err.message || 'Failed to load booking.')
     } finally {
       setLoading(false)
     }
@@ -77,7 +77,7 @@ export default function BookingDetailPage() {
       setCancelOpen(false)
       navigate('/dashboard/bookings')
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Failed to cancel booking.')
+      toast.error(err.message || 'Failed to cancel booking.')
     } finally {
       setCancelling(false)
     }
@@ -93,7 +93,7 @@ export default function BookingDetailPage() {
       setSelectedSlot(null)
       fetchBooking()
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Failed to reschedule.')
+      toast.error(err.message || 'Failed to reschedule.')
     } finally {
       setRescheduling(false)
     }

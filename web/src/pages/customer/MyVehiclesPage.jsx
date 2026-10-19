@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useForm } from 'react-hook-form'
 import { Car, Bike, Pencil, Trash2, Plus } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { vehiclesAPI } from '../../api/vehicles'
+import { vehiclesAPI, fromBackend } from '../../api/vehicles'
 import Spinner from '../../components/ui/Spinner'
 import EmptyState from '../../components/ui/EmptyState'
 import Button from '../../components/ui/Button'
@@ -87,9 +87,10 @@ export default function MyVehiclesPage() {
     setError(null)
     try {
       const res = await vehiclesAPI.getMyVehicles()
-      setVehicles(res.data.data.vehicles || [])
+      const raw = res.data.data?.vehicles || res.data.data || []
+      setVehicles(Array.isArray(raw) ? raw.map(fromBackend) : [])
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to load vehicles.')
+      setError(err.message || 'Failed to load vehicles.')
     } finally {
       setLoading(false)
     }
@@ -105,7 +106,7 @@ export default function MyVehiclesPage() {
       setAddOpen(false)
       fetchVehicles()
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Failed to add vehicle.')
+      toast.error(err.message || 'Failed to add vehicle.')
     } finally {
       setSubmitting(false)
     }
@@ -119,7 +120,7 @@ export default function MyVehiclesPage() {
       setEditVehicle(null)
       fetchVehicles()
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Failed to update vehicle.')
+      toast.error(err.message || 'Failed to update vehicle.')
     } finally {
       setSubmitting(false)
     }
@@ -133,7 +134,7 @@ export default function MyVehiclesPage() {
       setDeleteVehicle(null)
       fetchVehicles()
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Failed to delete vehicle.')
+      toast.error(err.message || 'Failed to delete vehicle.')
     } finally {
       setDeleting(false)
     }

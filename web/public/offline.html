@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PROWASH — Offline</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: Inter, -apple-system, BlinkMacSystemFont, sans-serif;
+      background: #0B1B2B;
+      color: #fff;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      text-align: center;
+      padding: 1.5rem;
+    }
+    .badge {
+      background: #147DAB;
+      color: #fff;
+      padding: 0.25rem 0.875rem;
+      border-radius: 9999px;
+      font-size: 0.75rem;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      margin-bottom: 1.5rem;
+    }
+    h1 { font-size: 2rem; font-weight: 800; margin-bottom: 0.75rem; }
+    p { color: rgba(255,255,255,0.65); max-width: 360px; line-height: 1.6; }
+    .retry {
+      margin-top: 2rem;
+      background: #147DAB;
+      color: #fff;
+      border: none;
+      padding: 0.75rem 2rem;
+      border-radius: 0.75rem;
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .retry:hover { background: #1a9fd4; }
+  </style>
+</head>
+<body>
+  <div class="badge">PROWASH</div>
+  <h1>You're Offline</h1>
+  <p>Please check your internet connection. Booking and live tracking require an active connection.</p>
+  <button class="retry" onclick="window.location.reload()">Try Again</button>
+</body>
+</html>

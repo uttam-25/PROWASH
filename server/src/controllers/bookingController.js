@@ -80,6 +80,23 @@ export const createBooking = async (req, res, next) => {
       ],
     });
 
+    // If immediate booking, transition to searching_partner and notify partners
+    if (req.body.isImmediate === true) {
+      booking.status = 'searching_partner';
+      booking.isImmediate = true;
+      booking.statusHistory.push({ status: 'searching_partner', changedAt: new Date(), changedBy: req.user._id });
+      await booking.save();
+      // Notify all connected partners
+      try {
+        const { getIO } = await import('../services/socketService.js');
+        getIO().to('partners').emit('new:request', {
+          bookingId: booking._id,
+          serviceId: booking.serviceId,
+          location: booking.customerLocation,
+        });
+      } catch {}
+    }
+
     // Create payment record
     await Payment.create({
       bookingId: booking._id,

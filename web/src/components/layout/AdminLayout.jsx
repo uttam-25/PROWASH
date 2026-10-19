@@ -11,6 +11,7 @@ import {
   BarChart2,
   Settings,
   LogOut,
+  UserCheck,
 } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
 
@@ -18,6 +19,7 @@ const NAV_ITEMS = [
   { to: '/admin', icon: LayoutDashboard, label: 'Dashboard', end: true },
   { to: '/admin/bookings', icon: CalendarDays, label: 'Bookings' },
   { to: '/admin/customers', icon: Users, label: 'Customers' },
+  { to: '/admin/partners', icon: UserCheck, label: 'Partners' },
   { to: '/admin/vehicles', icon: Car, label: 'Vehicles' },
   { to: '/admin/services', icon: Sparkles, label: 'Services' },
   { to: '/admin/payments', icon: CreditCard, label: 'Payments' },

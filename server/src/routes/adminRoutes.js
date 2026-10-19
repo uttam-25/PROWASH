@@ -15,6 +15,10 @@ import {
   getAdminVehicles,
   getPayments,
   recordCODCollection,
+  getPartners,
+  getPartnerById,
+  verifyPartner,
+  deactivatePartner,
 } from '../controllers/adminController.js';
 import { createService, updateService, deleteService } from '../controllers/serviceController.js';
 import { getBookingById } from '../controllers/bookingController.js';
@@ -50,6 +54,12 @@ router.get('/vehicles', protect, requireAdmin, getAdminVehicles);
 router.post('/services', protect, requireAdmin, validate(serviceRules), createService);
 router.put('/services/:id', protect, requireAdmin, updateService);
 router.delete('/services/:id', protect, requireAdmin, deleteService);
+
+// Partners — must come before /bookings/:id to avoid route shadowing
+router.get('/partners', protect, requireAdmin, getPartners);
+router.get('/partners/:id', protect, requireAdmin, getPartnerById);
+router.patch('/partners/:id/verify', protect, requireAdmin, verifyPartner);
+router.patch('/partners/:id/deactivate', protect, requireAdmin, deactivatePartner);
 
 // Bookings — list must come before :id to avoid route shadowing
 router.get('/bookings', protect, requireAdmin, getAdminBookings);

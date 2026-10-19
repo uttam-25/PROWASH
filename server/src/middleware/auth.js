@@ -44,3 +44,14 @@ export const requireAdmin = (req, res, next) => {
   }
   next();
 };
+
+/**
+ * Restrict access to partner users only.
+ * Must be used after protect().
+ */
+export const requirePartner = (req, res, next) => {
+  if (!req.user || req.user.role !== 'partner') {
+    return next(new AppError('Access denied — partners only', 403));
+  }
+  next();
+};

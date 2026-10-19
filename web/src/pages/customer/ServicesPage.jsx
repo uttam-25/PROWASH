@@ -26,7 +26,7 @@ export default function ServicesPage() {
       setServices(res.data.data.services || [])
       setActiveCategory('All')
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to load services.')
+      setError(err.message || 'Failed to load services.')
     } finally {
       setLoading(false)
     }

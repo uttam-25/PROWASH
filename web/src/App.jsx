@@ -6,6 +6,7 @@ import Spinner from './components/ui/Spinner'
 // Layouts
 import CustomerLayout from './components/layout/CustomerLayout'
 import AdminLayout from './components/layout/AdminLayout'
+import PartnerLayout from './components/layout/PartnerLayout'
 
 // Public pages
 import LandingPage from './pages/LandingPage'
@@ -13,6 +14,8 @@ import LoginPage from './pages/LoginPage'
 import RegisterPage from './pages/RegisterPage'
 import ForgotPasswordPage from './pages/ForgotPasswordPage'
 import ResetPasswordPage from './pages/ResetPasswordPage'
+import PartnerLoginPage from './pages/PartnerLoginPage'
+import PartnerRegisterPage from './pages/PartnerRegisterPage'
 
 // Customer pages (lazy)
 const DashboardPage = lazy(() => import('./pages/customer/DashboardPage'))
@@ -37,14 +40,35 @@ const AdminPaymentsPage = lazy(() => import('./pages/admin/AdminPaymentsPage'))
 const AdminSchedulePage = lazy(() => import('./pages/admin/AdminSchedulePage'))
 const AdminReportsPage = lazy(() => import('./pages/admin/AdminReportsPage'))
 const AdminSettingsPage = lazy(() => import('./pages/admin/AdminSettingsPage'))
+const AdminPartnersPage = lazy(() => import('./pages/admin/AdminPartnersPage'))
+const AdminPartnerDetailPage = lazy(() => import('./pages/admin/AdminPartnerDetailPage'))
+
+// Partner pages (lazy)
+const PartnerDashboardPage = lazy(() => import('./pages/partner/PartnerDashboardPage'))
+const PartnerJobsPage = lazy(() => import('./pages/partner/PartnerJobsPage'))
+const PartnerJobPage = lazy(() => import('./pages/partner/PartnerJobPage'))
+const PartnerProfilePage = lazy(() => import('./pages/partner/PartnerProfilePage'))
 
 function ProtectedRoute({ children, role }) {
   const { isLoading, isAuthenticated, user } = useAuth()
 
   if (isLoading) return <Spinner message="Loading..." />
-  if (!isAuthenticated) return <Navigate to="/login" replace />
-  if (role === 'customer' && user.role === 'owner') return <Navigate to="/admin" replace />
-  if (role === 'owner' && user.role === 'customer') return <Navigate to="/dashboard" replace />
+  if (!isAuthenticated) {
+    // Send partners to partner-login, others to login
+    if (role === 'partner') return <Navigate to="/partner-login" replace />
+    return <Navigate to="/login" replace />
+  }
+
+  if (role === 'customer' && user.role !== 'customer') {
+    if (user.role === 'admin') return <Navigate to="/admin" replace />
+    if (user.role === 'partner') return <Navigate to="/partner" replace />
+  }
+  if (role === 'admin' && user.role !== 'admin') {
+    return <Navigate to="/login" replace />
+  }
+  if (role === 'partner' && user.role !== 'partner') {
+    return <Navigate to="/partner-login" replace />
+  }
 
   return children
 }
@@ -59,6 +83,8 @@ export default function App() {
         <Route path="/register" element={<RegisterPage />} />
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
         <Route path="/reset-password" element={<ResetPasswordPage />} />
+        <Route path="/partner-login" element={<PartnerLoginPage />} />
+        <Route path="/partner-register" element={<PartnerRegisterPage />} />
 
         {/* Customer routes */}
         <Route
@@ -84,7 +110,7 @@ export default function App() {
         <Route
           path="/admin/*"
           element={
-            <ProtectedRoute role="owner">
+            <ProtectedRoute role="admin">
               <AdminLayout />
             </ProtectedRoute>
           }
@@ -94,12 +120,29 @@ export default function App() {
           <Route path="bookings/:id" element={<AdminBookingDetailPage />} />
           <Route path="customers" element={<AdminCustomersPage />} />
           <Route path="customers/:id" element={<AdminCustomerDetailPage />} />
+          <Route path="partners" element={<AdminPartnersPage />} />
+          <Route path="partners/:id" element={<AdminPartnerDetailPage />} />
           <Route path="vehicles" element={<AdminVehiclesPage />} />
           <Route path="services" element={<AdminServicesPage />} />
           <Route path="payments" element={<AdminPaymentsPage />} />
           <Route path="schedule" element={<AdminSchedulePage />} />
           <Route path="reports" element={<AdminReportsPage />} />
           <Route path="settings" element={<AdminSettingsPage />} />
+        </Route>
+
+        {/* Partner routes */}
+        <Route
+          path="/partner/*"
+          element={
+            <ProtectedRoute role="partner">
+              <PartnerLayout />
+            </ProtectedRoute>
+          }
+        >
+          <Route index element={<PartnerDashboardPage />} />
+          <Route path="jobs" element={<PartnerJobsPage />} />
+          <Route path="jobs/:id" element={<PartnerJobPage />} />
+          <Route path="profile" element={<PartnerProfilePage />} />
         </Route>
       </Routes>
     </Suspense>

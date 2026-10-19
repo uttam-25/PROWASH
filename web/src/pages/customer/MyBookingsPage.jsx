@@ -38,7 +38,7 @@ export default function MyBookingsPage() {
       const res = await bookingsAPI.getMyBookings(params)
       setBookings(res.data.data.bookings || [])
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to load bookings.')
+      setError(err.message || 'Failed to load bookings.')
     } finally {
       setLoading(false)
     }
@@ -54,7 +54,7 @@ export default function MyBookingsPage() {
       setCancelTarget(null)
       fetchBookings(activeTab)
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Failed to cancel booking.')
+      toast.error(err.message || 'Failed to cancel booking.')
     } finally {
       setCancelling(false)
     }

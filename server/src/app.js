@@ -11,6 +11,7 @@ import bookingRoutes from './routes/bookingRoutes.js';
 import paymentRoutes from './routes/paymentRoutes.js';
 import notificationRoutes from './routes/notificationRoutes.js';
 import adminRoutes from './routes/adminRoutes.js';
+import partnerRoutes from './routes/partnerRoutes.js';
 import errorHandler from './middleware/errorHandler.js';
 
 const app = express();
@@ -62,6 +63,9 @@ app.use('/api/notifications', notificationRoutes);
 
 // Admin routes (reports, schedule, admin-scoped resources)
 app.use('/api/admin', adminRoutes);
+
+// Partner routes
+app.use('/api/partner', partnerRoutes);
 
 // Catch-all 404
 app.use((req, res) => {

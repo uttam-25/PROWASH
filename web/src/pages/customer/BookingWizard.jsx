@@ -1,11 +1,11 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate, useSearchParams, Link } from 'react-router-dom'
 import { Car, Bike, Zap, ArrowLeft, Check } from 'lucide-react'
 import { format, parseISO, addDays } from 'date-fns'
 import toast from 'react-hot-toast'
 import { useForm } from 'react-hook-form'
 import { bookingsAPI } from '../../api/bookings'
-import { vehiclesAPI } from '../../api/vehicles'
+import { vehiclesAPI, fromBackend } from '../../api/vehicles'
 import { servicesAPI } from '../../api/services'
 import { availabilityAPI } from '../../api/availability'
 import Spinner from '../../components/ui/Spinner'
@@ -71,6 +71,9 @@ export default function BookingWizard() {
   const [paymentMethod, setPaymentMethod] = useState(null)
   const [submitting, setSubmitting] = useState(false)
   const [bookingResult, setBookingResult] = useState(null)
+  const [liveStatus, setLiveStatus] = useState(null)
+  const [partnerInfo, setPartnerInfo] = useState(null)
+  const socketRef = useRef(null)
 
   // Step 2 state
   const [vehicles, setVehicles] = useState([])
@@ -97,7 +100,8 @@ export default function BookingWizard() {
     setVehiclesError(null)
     try {
       const res = await vehiclesAPI.getMyVehicles()
-      setVehicles(res.data.data.vehicles || [])
+      const raw = res.data.data?.vehicles || res.data.data || []
+      setVehicles(Array.isArray(raw) ? raw.map(fromBackend) : [])
     } catch {
       setVehiclesError('Failed to load vehicles.')
     } finally {
@@ -149,7 +153,7 @@ export default function BookingWizard() {
       setAddVehicleOpen(false)
       await fetchVehicles()
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Failed to add vehicle.')
+      toast.error(err.message || 'Failed to add vehicle.')
     } finally {
       setAddingVehicle(false)
     }
@@ -166,9 +170,9 @@ export default function BookingWizard() {
         paymentMethod,
         notes,
       })
-      setBookingResult(res.data.data.booking)
+      setBookingResult(res.data.data?.booking || res.data.data)
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Booking failed. Please try again.')
+      toast.error(err.message || 'Booking failed. Please try again.')
     } finally {
       setSubmitting(false)
     }
@@ -186,6 +190,43 @@ export default function BookingWizard() {
   useEffect(() => {
     if (currentStep === 4 && selectedDate) fetchSlots(selectedDate)
   }, [selectedDate])
+
+  // Real-time booking status tracking via Socket.IO + polling fallback
+  useEffect(() => {
+    if (!bookingResult) return
+
+    const bookingId = bookingResult._id
+
+    // Socket connection
+    import('socket.io-client').then(({ io }) => {
+      const apiUrl = import.meta.env.VITE_API_URL || window.location.origin
+      const socket = io(apiUrl, { path: '/socket.io', transports: ['websocket', 'polling'] })
+      socketRef.current = socket
+      socket.emit('join:booking', { bookingId })
+      socket.on('booking:assigned', (data) => {
+        setLiveStatus('partner_assigned')
+        if (data.partner) setPartnerInfo(data.partner)
+      })
+      socket.on('booking:status_update', (data) => {
+        setLiveStatus(data.status)
+      })
+    }).catch(() => {})
+
+    // Polling fallback every 10 seconds
+    const poll = setInterval(async () => {
+      try {
+        const res = await bookingsAPI.getBooking(bookingId)
+        const b = res.data.data?.booking || res.data.data
+        if (b?.status) setLiveStatus(b.status)
+        if (b?.partnerId) setPartnerInfo(b.partnerId)
+      } catch {}
+    }, 10000)
+
+    return () => {
+      if (socketRef.current) socketRef.current.disconnect()
+      clearInterval(poll)
+    }
+  }, [bookingResult])
 
   function goBack() {
     if (currentStep > 1) setCurrentStep(s => s - 1)
@@ -412,10 +453,25 @@ export default function BookingWizard() {
   )
 
   // ── Step 5: Review & Confirm ──────────────────────────────────
+  const STATUS_LABELS = {
+    pending:           '⏳ Booking Pending',
+    searching_partner: '🔍 Searching for a Cleaning Partner...',
+    partner_assigned:  '✅ Partner Assigned',
+    partner_on_way:    '🚗 Partner is on the Way',
+    partner_arrived:   '📍 Partner Arrived',
+    in_progress:       '🧼 Cleaning in Progress',
+    completed:         '✨ Service Completed!',
+    confirmed:         '✅ Booking Confirmed',
+    cancelled:         '❌ Booking Cancelled',
+  }
+
   const Step5 = () => {
     if (bookingResult) {
+      const displayStatus = liveStatus || bookingResult.status
+      const isSearching = ['pending', 'searching_partner'].includes(displayStatus)
+
       return (
-        <div className="text-center py-12 space-y-4">
+        <div className="text-center py-10 space-y-6">
           <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto">
             <Check className="w-8 h-8 text-green-600" />
           </div>
@@ -426,6 +482,29 @@ export default function BookingWizard() {
               {bookingResult.bookingReference || bookingResult._id}
             </span>
           </p>
+
+          {/* Live status card */}
+          <div className={`card p-5 mx-auto max-w-sm border-2 ${
+            displayStatus === 'completed' ? 'border-green-400 bg-green-50' : 'border-[#147DAB]/30 bg-[#147DAB]/5'
+          }`}>
+            <div className="flex items-center justify-center gap-3">
+              {isSearching && (
+                <span className="relative flex h-3 w-3">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#147DAB] opacity-75" />
+                  <span className="relative inline-flex rounded-full h-3 w-3 bg-[#147DAB]" />
+                </span>
+              )}
+              <p className="font-semibold text-gray-800">
+                {STATUS_LABELS[displayStatus] || displayStatus?.replace(/_/g, ' ')}
+              </p>
+            </div>
+            {partnerInfo?.name && (
+              <p className="text-sm text-gray-500 mt-2">
+                Partner: <span className="font-medium text-gray-700">{partnerInfo.name}</span>
+              </p>
+            )}
+          </div>
+
           <Link to="/dashboard/bookings">
             <Button className="mt-4">View My Bookings</Button>
           </Link>
