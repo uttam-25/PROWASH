@@ -10,6 +10,7 @@ export const partnerAPI = {
   acceptRequest:      (bookingId)          => api.patch(`/partner/requests/${bookingId}/accept`),
   rejectRequest:      (bookingId)          => api.patch(`/partner/requests/${bookingId}/reject`),
   getJobs:            (params = {})        => api.get('/partner/jobs', { params }),
+  getJobById:         (bookingId)          => api.get(`/partner/jobs/${bookingId}`),
   updateJobStatus:    (bookingId, status)  => api.patch(`/partner/jobs/${bookingId}/status`, { status }),
   uploadPhotos:       (bookingId, data)    => api.post(`/partner/jobs/${bookingId}/photos`, data),
 }

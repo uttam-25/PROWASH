@@ -24,11 +24,8 @@ export default function PartnerJobPage() {
 
   async function loadJob() {
     try {
-      const res = await partnerAPI.getJobs()
-      const jobs = res.data.data.jobs || []
-      const found = jobs.find((j) => j._id === id)
-      if (found) setBooking(found)
-      else toast.error('Job not found.')
+      const res = await partnerAPI.getJobById(id)
+      setBooking(res.data.data.booking)
     } catch (err) {
       toast.error(err.message || 'Failed to load job.')
     } finally {
@@ -165,54 +162,15 @@ export default function PartnerJobPage() {
 }
 
 function PhotoUploadSection({ bookingId, onUploaded }) {
-  const [uploading, setUploading] = useState(false)
-  const [type, setType] = useState('before')
-
-  async function handleUpload(e) {
-    const files = Array.from(e.target.files || [])
-    if (files.length === 0) return
-    setUploading(true)
-    try {
-      // For now, use placeholder URLs — real upload would call a storage service
-      const urls = files.map((f) => URL.createObjectURL(f))
-      await partnerAPI.uploadPhotos(bookingId, { type, urls })
-      toast.success(`${type} photos saved.`)
-      if (onUploaded) onUploaded()
-    } catch (err) {
-      toast.error(err.message || 'Failed to upload photos.')
-    } finally {
-      setUploading(false)
-    }
-  }
-
   return (
-    <div className="card p-5 space-y-3">
-      <div className="flex items-center gap-2">
-        <Camera className="w-5 h-5 text-[#147DAB]" />
-        <p className="font-semibold text-gray-800">Upload Photos</p>
+    <div className="card p-5">
+      <div className="flex items-center gap-2 mb-2">
+        <Camera className="w-5 h-5 text-gray-400" />
+        <p className="font-semibold text-gray-700">Before / After Photos</p>
       </div>
-      <div className="flex gap-3">
-        {['before', 'after'].map((t) => (
-          <button
-            key={t}
-            onClick={() => setType(t)}
-            className={`px-4 py-2 rounded-xl border-2 text-sm font-medium transition-all capitalize ${
-              type === t
-                ? 'border-[#147DAB] bg-[#147DAB] text-white'
-                : 'border-gray-300 text-gray-600 hover:border-[#147DAB]'
-            }`}
-          >
-            {t}
-          </button>
-        ))}
-      </div>
-      <label className={`flex items-center justify-center gap-2 px-4 py-3 rounded-xl border-2 border-dashed cursor-pointer transition-all ${
-        uploading ? 'opacity-60 cursor-not-allowed' : 'border-gray-300 hover:border-[#147DAB] text-gray-500 hover:text-[#147DAB]'
-      }`}>
-        <Camera className="w-4 h-4" />
-        <span className="text-sm font-medium">{uploading ? 'Uploading...' : `Upload ${type} photos`}</span>
-        <input type="file" accept="image/*" multiple className="hidden" disabled={uploading} onChange={handleUpload} />
-      </label>
+      <p className="text-sm text-gray-500">
+        Photo upload will be available once cloud storage is configured. Photos can be attached after the job is completed via the admin panel.
+      </p>
     </div>
   )
 }

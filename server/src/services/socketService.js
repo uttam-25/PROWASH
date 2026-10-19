@@ -35,3 +35,7 @@ export function emitToBooking(bookingId, event, data) {
 export function emitToPartner(partnerId, event, data) {
   if (io) io.to(`partner:${partnerId}`).emit(event, data);
 }
+
+export function emitToAll(room, event, data) {
+  if (io) io.to(room).emit(event, data);
+}

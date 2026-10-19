@@ -44,7 +44,8 @@ export default function PartnerRegisterPage() {
         password: data.password,
         serviceCategories: selectedCategories,
       })
-      const { token, user } = res.data
+      const { token } = res.data
+      const user = res.data.data?.user || res.data.user
       localStorage.setItem('prowash_token', token)
       localStorage.setItem('prowash_user', JSON.stringify(user))
       updateUser(user)

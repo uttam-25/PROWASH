@@ -11,6 +11,7 @@ import {
   rejectRequest,
   updateJobStatus,
   getMyJobs,
+  getJobById,
   uploadPhotos,
 } from '../controllers/partnerController.js';
 
@@ -28,6 +29,7 @@ router.get('/requests', protect, requirePartner, getNearbyRequests);
 router.patch('/requests/:bookingId/accept', protect, requirePartner, acceptRequest);
 router.patch('/requests/:bookingId/reject', protect, requirePartner, rejectRequest);
 router.get('/jobs', protect, requirePartner, getMyJobs);
+router.get('/jobs/:bookingId', protect, requirePartner, getJobById);
 router.patch('/jobs/:bookingId/status', protect, requirePartner, updateJobStatus);
 router.post('/jobs/:bookingId/photos', protect, requirePartner, uploadPhotos);
 

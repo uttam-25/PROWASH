@@ -37,7 +37,7 @@ export const registerPartner = async (req, res, next) => {
     const token = signToken(user._id);
     const safeUser = { _id: user._id, name: user.name, email: user.email, role: user.role, phone: user.phone };
 
-    res.status(201).json({ success: true, token, user: safeUser, data: { profile } });
+    res.status(201).json({ success: true, token, data: { user: safeUser, profile } });
   } catch (err) {
     next(err);
   }
@@ -318,6 +318,26 @@ export const getMyJobs = async (req, res, next) => {
       .sort({ startAt: -1 });
 
     res.json({ success: true, data: { jobs } });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ---------------------------------------------------------------------------
+// GET /api/partner/jobs/:bookingId
+// ---------------------------------------------------------------------------
+export const getJobById = async (req, res, next) => {
+  try {
+    const { bookingId } = req.params;
+    const booking = await Booking.findOne({ _id: bookingId, partnerId: req.user._id })
+      .populate('customerId', 'name phone email')
+      .populate('vehicleId', 'make model type licensePlate color')
+      .populate('serviceId', 'name category price duration');
+
+    if (!booking) {
+      return next(new AppError('Job not found', 404));
+    }
+    res.json({ success: true, data: { booking } });
   } catch (err) {
     next(err);
   }

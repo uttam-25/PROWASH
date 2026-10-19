@@ -88,8 +88,8 @@ export const createBooking = async (req, res, next) => {
       await booking.save();
       // Notify all connected partners
       try {
-        const { getIO } = await import('../services/socketService.js');
-        getIO().to('partners').emit('new:request', {
+        const { emitToAll } = await import('../services/socketService.js');
+        emitToAll('partners', 'new:request', {
           bookingId: booking._id,
           serviceId: booking.serviceId,
           location: booking.customerLocation,

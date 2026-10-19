@@ -54,8 +54,10 @@ export default function AdminDashboardPage() {
     </div>
   )
 
-  const stats = dashboard?.stats || {}
-  const recentBookings = dashboard?.recentBookings || []
+  // getDashboard returns a flat object: { totalBookings, pendingBookings, todayAppointments, totalRevenue, activeServices, totalCustomers }
+  // getReports returns: { confirmedBookings, inProgressBookings, completedBookings, recentBookings, ... }
+  const stats = dashboard || {}
+  const recentBookings = reports?.recentBookings || []
   const monthlyRevenue = reports?.monthlyRevenue || []
 
   return (
@@ -69,11 +71,11 @@ export default function AdminDashboardPage() {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatsCard icon={Users} label="Total Customers" value={stats.totalCustomers ?? '—'} color="text-blue-600" bg="bg-blue-50" />
         <StatsCard icon={CalendarDays} label="Total Bookings" value={stats.totalBookings ?? '—'} color="text-indigo-600" bg="bg-indigo-50" />
-        <StatsCard icon={Clock} label="Today Bookings" value={stats.todayBookings ?? '—'} color="text-orange-600" bg="bg-orange-50" />
+        <StatsCard icon={Clock} label="Today Bookings" value={stats.todayAppointments ?? '—'} color="text-orange-600" bg="bg-orange-50" />
         <StatsCard icon={AlertCircle} label="Pending" value={stats.pendingBookings ?? '—'} color="text-yellow-600" bg="bg-yellow-50" />
-        <StatsCard icon={CheckCircle} label="Confirmed" value={stats.confirmedBookings ?? '—'} color="text-green-600" bg="bg-green-50" />
-        <StatsCard icon={Loader} label="In Progress" value={stats.inProgressBookings ?? '—'} color="text-blue-600" bg="bg-blue-50" />
-        <StatsCard icon={Star} label="Completed Today" value={stats.completedToday ?? '—'} color="text-green-600" bg="bg-green-50" />
+        <StatsCard icon={CheckCircle} label="Confirmed" value={reports?.confirmedBookings ?? '—'} color="text-green-600" bg="bg-green-50" />
+        <StatsCard icon={Loader} label="In Progress" value={reports?.inProgressBookings ?? '—'} color="text-blue-600" bg="bg-blue-50" />
+        <StatsCard icon={Star} label="Completed" value={reports?.completedBookings ?? '—'} color="text-green-600" bg="bg-green-50" />
         <StatsCard
           icon={DollarSign}
           label="Total Revenue"
