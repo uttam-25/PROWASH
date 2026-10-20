@@ -206,7 +206,7 @@ export default function BookingWizard() {
       socket.emit('join:booking', { bookingId })
       socket.on('booking:assigned', (data) => {
         setLiveStatus('partner_assigned')
-        if (data.partner) setPartnerInfo(data.partner)
+        if (data.partnerName) setPartnerInfo({ name: data.partnerName })
       })
       socket.on('booking:status_update', (data) => {
         setLiveStatus(data.status)
@@ -219,7 +219,8 @@ export default function BookingWizard() {
         const res = await bookingsAPI.getBooking(bookingId)
         const b = res.data.data?.booking || res.data.data
         if (b?.status) setLiveStatus(b.status)
-        if (b?.partnerId) setPartnerInfo(b.partnerId)
+        // partnerId is populated server-side to { _id, name, phone }
+        if (b?.partnerId && typeof b.partnerId === 'object') setPartnerInfo(b.partnerId)
       } catch {}
     }, 10000)
 

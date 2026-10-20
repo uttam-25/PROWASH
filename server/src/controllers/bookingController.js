@@ -80,22 +80,24 @@ export const createBooking = async (req, res, next) => {
       ],
     });
 
-    // If immediate booking, transition to searching_partner and notify partners
+    // If immediate booking, transition to searching_partner
     if (req.body.isImmediate === true) {
       booking.status = 'searching_partner';
       booking.isImmediate = true;
       booking.statusHistory.push({ status: 'searching_partner', changedAt: new Date(), changedBy: req.user._id });
       await booking.save();
-      // Notify all connected partners
-      try {
-        const { emitToAll } = await import('../services/socketService.js');
-        emitToAll('partners', 'new:request', {
-          bookingId: booking._id,
-          serviceId: booking.serviceId,
-          location: booking.customerLocation,
-        });
-      } catch {}
     }
+
+    // Notify all connected partners about the new request so they can accept it.
+    // Partners see bookings in 'pending' or 'searching_partner' state via getNearbyRequests.
+    try {
+      const { emitToAll } = await import('../services/socketService.js');
+      emitToAll('partners', 'new:request', {
+        bookingId: booking._id,
+        serviceId: booking.serviceId,
+        location: booking.customerLocation,
+      });
+    } catch {}
 
     // Create payment record
     await Payment.create({
@@ -162,7 +164,9 @@ export const getBookingById = async (req, res, next) => {
     const booking = await Booking.findById(req.params.id)
       .populate('customerId', 'name email phone')
       .populate('vehicleId', 'type make model licensePlate color photo')
-      .populate('serviceId', 'name category price duration imageUrl description');
+      .populate('serviceId', 'name category price duration imageUrl description')
+      .populate('partnerId', 'name phone')
+      .populate({ path: 'statusHistory.changedBy', select: 'name' });
 
     if (!booking) {
       return next(new AppError('Booking not found', 404));

@@ -149,7 +149,7 @@ export default function BookingDetailPage() {
           {booking.service?.category && <Badge label={booking.service.category} />}
           <div className="flex items-center gap-4 pt-1">
             <p className="text-xl font-bold text-primary">
-              ₹{(booking.totalAmount || booking.service?.price)?.toLocaleString('en-IN')}
+              ₹{(booking.priceAtBooking ?? booking.service?.price)?.toLocaleString('en-IN')}
             </p>
             {booking.service?.durationMinutes && (
               <div className="flex items-center gap-1 text-sm text-gray-500">
@@ -193,7 +193,7 @@ export default function BookingDetailPage() {
             <Badge status={booking.paymentStatus} />
           </div>
           <p className="text-xl font-bold text-gray-800">
-            ₹{(booking.totalAmount || booking.service?.price)?.toLocaleString('en-IN')}
+            ₹{(booking.priceAtBooking ?? booking.service?.price)?.toLocaleString('en-IN')}
           </p>
         </div>
       </div>
@@ -211,8 +211,8 @@ export default function BookingDetailPage() {
                   {entry.note && <p className="text-sm text-gray-600 sm:ml-2">— {entry.note}</p>}
                 </div>
                 <p className="text-xs text-gray-400 mt-1">
-                  {entry.timestamp ? format(parseISO(entry.timestamp), 'dd MMM yyyy, hh:mm a') : ''}
-                  {entry.changedBy && <span className="ml-2">by {entry.changedBy}</span>}
+                  {entry.changedAt ? format(parseISO(entry.changedAt), 'dd MMM yyyy, hh:mm a') : ''}
+                  {entry.changedBy?.name && <span className="ml-2">by {entry.changedBy.name}</span>}
                 </p>
               </li>
             ))}

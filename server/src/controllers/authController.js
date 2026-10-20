@@ -92,7 +92,7 @@ export const register = async (req, res, next) => {
       role: 'customer', // always force customer role on registration
     });
 
-    const token = generateToken(user._id);
+    const token = generateToken(user._id, user.role);
 
     res.status(201).json({
       success: true,
@@ -126,7 +126,7 @@ export const login = async (req, res, next) => {
       return next(new AppError('Your account has been deactivated', 401));
     }
 
-    const token = generateToken(user._id);
+    const token = generateToken(user._id, user.role);
 
     res.status(200).json({
       success: true,
@@ -222,7 +222,7 @@ export const resetPassword = async (req, res, next) => {
     user.resetPasswordExpires = undefined;
     await user.save();
 
-    const newToken = generateToken(user._id);
+    const newToken = generateToken(user._id, user.role);
 
     res.status(200).json({
       success: true,

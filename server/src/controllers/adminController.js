@@ -75,7 +75,7 @@ const ALLOWED_TRANSITIONS = {
   // Note: confirmed → in_progress is an intentional manual-dispatch path for admin use.
   // A booking advanced this way may have partnerId: null (no partner assigned).
   // If that is a concern, add a guard here that requires booking.partnerId when targeting in_progress.
-  pending: ['confirmed', 'rejected', 'cancelled'],
+  pending: ['confirmed', 'searching_partner', 'rejected', 'cancelled'],
   confirmed: ['in_progress', 'cancelled', 'rescheduled'],
   searching_partner: ['partner_assigned', 'cancelled'],
   partner_assigned: ['partner_on_way', 'cancelled'],

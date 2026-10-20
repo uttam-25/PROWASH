@@ -115,7 +115,7 @@ export default function MyBookingsPage() {
                     {b.startAt ? format(parseISO(b.startAt), 'dd MMM yyyy, hh:mm a') : '—'}
                   </td>
                   <td className="py-3 pr-4 text-gray-700 whitespace-nowrap">
-                    ₹{b.totalAmount?.toLocaleString('en-IN') || b.service?.price?.toLocaleString('en-IN') || '—'}
+                    ₹{b.priceAtBooking?.toLocaleString('en-IN') || b.service?.price?.toLocaleString('en-IN') || '—'}
                   </td>
                   <td className="py-3 pr-4">
                     <Badge status={b.status} />

@@ -16,3 +16,12 @@ ReactDOM.createRoot(document.getElementById('root')).render(
     </BrowserRouter>
   </React.StrictMode>
 )
+
+// Register a minimal service worker that serves the offline fallback page on
+// network failure. Booking and live-tracking requests always require
+// connectivity and are never cached or served offline.
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => {})
+  })
+}

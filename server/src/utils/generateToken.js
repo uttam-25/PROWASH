@@ -6,8 +6,10 @@ import crypto from 'crypto';
  * @param {string} userId
  * @returns {string} signed JWT token
  */
-export const generateToken = (userId) => {
-  return jwt.sign({ id: userId }, process.env.JWT_SECRET, {
+export const generateToken = (userId, role) => {
+  // Include `role` in the payload so Socket.IO can authorise role-scoped rooms
+  // (e.g. the `partners` broadcast room) without an extra DB lookup.
+  return jwt.sign({ id: userId, role }, process.env.JWT_SECRET, {
     expiresIn: process.env.JWT_EXPIRE || '7d',
   });
 };

@@ -4,9 +4,10 @@ import PartnerProfile from '../models/PartnerProfile.js';
 import Booking from '../models/Booking.js';
 import { AppError } from '../middleware/errorHandler.js';
 
-// Generate JWT — same pattern as authController
-function signToken(userId) {
-  return jwt.sign({ id: userId }, process.env.JWT_SECRET, { expiresIn: '30d' });
+// Generate JWT — same pattern as authController. Includes `role` so Socket.IO
+// can gate role-scoped rooms (e.g. the `partners` broadcast room).
+function signToken(userId, role) {
+  return jwt.sign({ id: userId, role }, process.env.JWT_SECRET, { expiresIn: '30d' });
 }
 
 // ---------------------------------------------------------------------------
@@ -34,7 +35,7 @@ export const registerPartner = async (req, res, next) => {
       serviceCategories: categories,
     });
 
-    const token = signToken(user._id);
+    const token = signToken(user._id, user.role);
     const safeUser = { _id: user._id, name: user.name, email: user.email, role: user.role, phone: user.phone };
 
     res.status(201).json({ success: true, token, data: { user: safeUser, profile } });
@@ -135,7 +136,7 @@ export const getNearbyRequests = async (req, res, next) => {
     }
 
     const requests = await Booking.find({
-      status: 'searching_partner',
+      status: { $in: ['searching_partner', 'pending'] },
       partnerId: null,
     })
       .populate('customerId', 'name phone')
@@ -165,7 +166,7 @@ export const acceptRequest = async (req, res, next) => {
 
     // Atomic findOneAndUpdate to prevent double-accepts
     const booking = await Booking.findOneAndUpdate(
-      { _id: bookingId, status: 'searching_partner', partnerId: null },
+      { _id: bookingId, status: { $in: ['searching_partner', 'pending'] }, partnerId: null },
       {
         $set: {
           partnerId: req.user._id,
@@ -210,11 +211,17 @@ export const acceptRequest = async (req, res, next) => {
 // ---------------------------------------------------------------------------
 export const rejectRequest = async (req, res, next) => {
   try {
-    // No status change — partner just opts out; log it in statusHistory
+    // Only verified partners may reject/opt-out of requests (mirrors accept guard)
+    const partnerProfile = await PartnerProfile.findOne({ userId: req.user._id });
+    if (!partnerProfile?.isVerified) {
+      return next(new AppError('Your account is not yet verified by admin', 403));
+    }
+
+    // No status change — partner just opts out; log it in statusHistory.
     const { bookingId } = req.params;
-    // Silently succeed even if booking is gone
+    // Only log for unassigned requests still awaiting a partner.
     await Booking.updateOne(
-      { _id: bookingId, status: 'searching_partner' },
+      { _id: bookingId, status: { $in: ['searching_partner', 'pending'] }, partnerId: null },
       {
         $push: {
           statusHistory: {

@@ -49,7 +49,11 @@ export function initSocket(httpServer) {
     });
 
     socket.on('join:partners', () => {
-      socket.join('partners');
+      // Only partner sockets may join the broadcast room — `new:request`
+      // payloads include customer location and must not leak to customers/admins.
+      if (socket.userRole === 'partner') {
+        socket.join('partners');
+      }
     });
 
     socket.on('disconnect', () => {});
