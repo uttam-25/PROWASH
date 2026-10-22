@@ -23,8 +23,8 @@ export const createBooking = async (req, res, next) => {
     if (!vehicleId || !serviceId || !startAtRaw || !paymentMethod) {
       return next(new AppError('vehicleId, serviceId, startAt and paymentMethod are required', 400));
     }
-    if (!['cod', 'online'].includes(paymentMethod)) {
-      return next(new AppError("paymentMethod must be 'cod' or 'online'", 400));
+    if (!['cod', 'online', 'upi'].includes(paymentMethod)) {
+      return next(new AppError("paymentMethod must be 'cod', 'online', or 'upi'", 400));
     }
 
     // Verify vehicle ownership
@@ -104,7 +104,7 @@ export const createBooking = async (req, res, next) => {
       bookingId: booking._id,
       customerId: req.user._id,
       amount: service.price,
-      method: paymentMethod, // 'cod' or 'online' — matches schema enum
+      method: paymentMethod, // 'cod', 'online', or 'upi' — matches schema enum
     });
 
     // Notify customer (fire-and-forget)
@@ -203,10 +203,8 @@ export const cancelBooking = async (req, res, next) => {
       return next(new AppError('Only pending or confirmed bookings can be cancelled', 400));
     }
 
-    const reason = (req.body.reason || req.body.cancellationReason || '').trim();
-    if (!reason) {
-      return next(new AppError('A cancellation reason is required', 400));
-    }
+    const reason = (req.body.reason || req.body.cancellationReason || '').trim()
+    // reason is optional — customers can cancel without providing a reason
 
     booking.status = 'cancelled';
     booking.cancelledAt = new Date();

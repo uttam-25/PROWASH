@@ -19,8 +19,8 @@ const app = express();
 // Security headers
 app.use(helmet());
 
-// CORS — allow all origins (restrict in production via env)
-app.use(cors({ origin: '*' }));
+// CORS — allow configured origin (set CORS_ORIGIN in production to restrict access)
+app.use(cors({ origin: process.env.CORS_ORIGIN || '*' }));
 
 // HTTP request logger (dev only)
 if (process.env.NODE_ENV !== 'test') {

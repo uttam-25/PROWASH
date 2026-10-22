@@ -5,11 +5,9 @@ import {
   handleWebhook,
   getMyPayments,
   getPayment,
-  getAllPayments,
-  updatePaymentStatus,
   confirmUPIPayment,
 } from '../controllers/paymentController.js';
-import { protect, requireAdmin } from '../middleware/auth.js';
+import { protect } from '../middleware/auth.js';
 
 const router = Router();
 
@@ -23,8 +21,7 @@ router.post('/confirm-upi', protect, confirmUPIPayment);
 router.get('/my', protect, getMyPayments);
 router.get('/:id', protect, getPayment);
 
-// Admin routes
-router.get('/admin/payments', protect, requireAdmin, getAllPayments);
-router.put('/admin/payments/:id/status', protect, requireAdmin, updatePaymentStatus);
+// Note: Admin payment routes (list all, update status) are handled via
+// adminRoutes.js at /api/admin/payments to avoid /:id wildcard shadowing.
 
 export default router;
