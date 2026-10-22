@@ -23,6 +23,8 @@ export default function LoginPage() {
       const user = await login(data)
       if (user.role === 'admin') {
         navigate('/admin')
+      } else if (user.role === 'partner') {
+        navigate('/partner')
       } else {
         navigate('/dashboard')
       }

@@ -133,7 +133,13 @@ export default function LandingPage() {
       {/* Footer */}
       <footer className="bg-gray-900 text-gray-400 py-8 text-center">
         <p className="font-bold text-white text-xl tracking-wider mb-1">PROWASH</p>
-        <p className="text-sm">© 2024 PROWASH. All rights reserved.</p>
+        <p className="text-sm mb-3">© 2024 PROWASH. All rights reserved.</p>
+        <p className="text-sm">
+          Are you a cleaning partner?{' '}
+          <Link to="/partner-register" className="text-[#147DAB] hover:underline font-medium">
+            Join here →
+          </Link>
+        </p>
       </footer>
     </div>
   )

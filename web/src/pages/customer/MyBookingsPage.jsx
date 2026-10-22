@@ -36,7 +36,7 @@ export default function MyBookingsPage() {
     try {
       const params = status ? { status } : {}
       const res = await bookingsAPI.getMyBookings(params)
-      setBookings(res.data.data.bookings || [])
+      setBookings(res.data.data?.bookings || res.data.data || [])
     } catch (err) {
       setError(err.message || 'Failed to load bookings.')
     } finally {

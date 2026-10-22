@@ -60,9 +60,9 @@ export default function DashboardPage() {
         vehiclesAPI.getMyVehicles(),
         servicesAPI.getServices(),
       ])
-      setBookings(bRes.data.data.bookings || [])
+      setBookings(bRes.data.data?.bookings || bRes.data.data || [])
       setVehicles(vRes.data.data?.vehicles || vRes.data.data || [])
-      setServices(sRes.data.data.services || [])
+      setServices(sRes.data.data.services || sRes.data.data || [])
     } catch (err) {
       setError(err.message || 'Failed to load dashboard data.')
     } finally {

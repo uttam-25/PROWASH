@@ -14,7 +14,9 @@ api.interceptors.response.use(
     if (error.response?.status === 401) {
       localStorage.removeItem('prowash_token')
       localStorage.removeItem('prowash_user')
-      if (!window.location.pathname.includes('/login')) window.location.href = '/login'
+      const isPartnerPath = window.location.pathname.startsWith('/partner')
+      const loginPage = isPartnerPath ? '/partner-login' : '/login'
+      if (!window.location.pathname.includes('login')) window.location.href = loginPage
     }
     return Promise.reject(new Error(error.response?.data?.message || error.message || 'Request failed'))
   }

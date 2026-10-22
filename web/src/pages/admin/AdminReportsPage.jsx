@@ -20,7 +20,7 @@ export default function AdminReportsPage() {
       const res = await adminAPI.getReports()
       setReports(res.data.data)
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to load reports.')
+      setError(err.message || 'Failed to load reports.')
     } finally {
       setLoading(false)
     }
@@ -36,10 +36,14 @@ export default function AdminReportsPage() {
     </div>
   )
 
-  const kpis = reports?.kpis || {}
+  // All KPI fields are at the top level of `reports` (no nested kpis object)
+  const kpis = reports || {}
   const monthlyRevenue = reports?.monthlyRevenue || []
-  const byVehicleType = reports?.bookingsByVehicleType || []
-  const topServices = reports?.topServices || []
+  // Backend returns { Car: N, Bike: N, Scooty: N } — convert to array for Recharts
+  const rawVehicleType = reports?.bookingsByVehicleType || {}
+  const byVehicleType = Object.entries(rawVehicleType).map(([type, count]) => ({ type, count }))
+  // Backend key is bookingsByService; items have { serviceName, count, revenue }
+  const topServices = (reports?.bookingsByService || []).map(s => ({ ...s, name: s.serviceName }))
 
   return (
     <div className="p-6 space-y-8">

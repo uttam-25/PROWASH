@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate, useSearchParams, Link } from 'react-router-dom'
-import { Car, Bike, Zap, ArrowLeft, Check } from 'lucide-react'
+import { Car, Bike, Zap, ArrowLeft, Check, ShieldCheck } from 'lucide-react'
 import { format, parseISO, addDays } from 'date-fns'
 import toast from 'react-hot-toast'
 import { useForm } from 'react-hook-form'
@@ -14,6 +14,7 @@ import Button from '../../components/ui/Button'
 import Modal from '../../components/ui/Modal'
 import Input from '../../components/ui/Input'
 import Select from '../../components/ui/Select'
+import VehicleRegistrationLookup from '../../components/VehicleRegistrationLookup'
 
 const STEPS = ['Vehicle Type', 'Select Vehicle', 'Select Service', 'Date & Time', 'Review & Confirm']
 
@@ -25,10 +26,38 @@ const VEHICLE_TYPE_OPTIONS = [
 ]
 
 // Mini vehicle form used in the "Add New Vehicle" modal during step 2
-function AddVehicleForm({ onSubmit, loading }) {
-  const { register, handleSubmit, formState: { errors } } = useForm()
+// Uses registration lookup to auto-fill details
+function AddVehicleForm({ onSubmit, loading, defaultVehicleType }) {
+  const { register, handleSubmit, setValue, formState: { errors } } = useForm({
+    defaultValues: { vehicleType: defaultVehicleType || '' }
+  })
+  const [lookupData, setLookupData] = useState(null)
+  const [lookupVerified, setLookupVerified] = useState(false)
+
+  function handleLookupComplete(fields) {
+    setLookupData(fields)
+    setLookupVerified(true)
+    if (fields.make) setValue('make', fields.make, { shouldValidate: true })
+    if (fields.model) setValue('model', fields.model, { shouldValidate: true })
+    if (fields.color) setValue('color', fields.color)
+    if (fields.registrationNumber) setValue('registrationNumber', fields.registrationNumber, { shouldValidate: true })
+    if (fields.suggestedCategory && !defaultVehicleType) {
+      setValue('vehicleType', fields.suggestedCategory, { shouldValidate: true })
+    }
+  }
+
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+    <form
+      onSubmit={handleSubmit((data) =>
+        onSubmit({ ...data, ...(lookupData || {}), lookupVerified })
+      )}
+      className="space-y-4"
+    >
+      {/* Registration lookup */}
+      <div className="pb-3 border-b border-gray-100">
+        <VehicleRegistrationLookup onLookupComplete={handleLookupComplete} />
+      </div>
+
       <Select
         label="Vehicle Type"
         required
@@ -36,19 +65,34 @@ function AddVehicleForm({ onSubmit, loading }) {
         error={errors.vehicleType?.message}
         {...register('vehicleType', { required: 'Required' })}
       />
-      <Input
-        label="Registration Number"
-        required
-        error={errors.registrationNumber?.message}
-        {...register('registrationNumber', { required: 'Required' })}
-      />
-      <Input label="Make" required error={errors.make?.message} {...register('make', { required: 'Required' })} />
-      <Input label="Model" required error={errors.model?.message} {...register('model', { required: 'Required' })} />
-      <Input label="Color" {...register('color')} />
-      <div className="space-y-1">
-        <label className="block text-sm font-medium text-gray-700">Notes</label>
-        <textarea className="input" rows={2} {...register('notes')} />
+
+      <div className="relative">
+        <Input
+          label="Registration Number"
+          required
+          placeholder="e.g. MH12AB1234"
+          className={`font-mono uppercase tracking-widest ${lookupVerified ? 'pr-8' : ''}`}
+          error={errors.registrationNumber?.message}
+          {...register('registrationNumber', { required: 'Required' })}
+        />
+        {lookupVerified && (
+          <ShieldCheck className="absolute right-3 top-9 w-4 h-4 text-green-600" title="Verified" />
+        )}
       </div>
+
+      <Input
+        label="Make"
+        required
+        error={errors.make?.message}
+        {...register('make', { required: 'Required' })}
+      />
+      <Input
+        label="Model"
+        required
+        error={errors.model?.message}
+        {...register('model', { required: 'Required' })}
+      />
+      <Input label="Color" {...register('color')} />
       <div className="flex justify-end pt-2">
         <Button type="submit" loading={loading}>Add Vehicle</Button>
       </div>
@@ -115,7 +159,7 @@ export default function BookingWizard() {
     try {
       const params = vehicleType ? { vehicleType } : {}
       const res = await servicesAPI.getServices(params)
-      const list = res.data.data.services || []
+      const list = res.data.data?.services || res.data.data || []
       setServices(list)
       // Pre-select from URL param
       if (preselectedServiceId) {
@@ -137,7 +181,10 @@ export default function BookingWizard() {
     try {
       const dateStr = format(date, 'yyyy-MM-dd')
       const res = await availabilityAPI.getSlots(selectedService._id, dateStr)
-      setSlots(res.data.data.slots || [])
+      // Backend returns availableSlots (not slots)
+      const raw = res.data.data?.availableSlots || res.data.data?.slots || []
+      // Normalise: ensure every slot has an `available` flag for the UI
+      setSlots(raw.map(s => ({ ...s, available: true })))
     } catch {
       setSlotsError('Failed to load available slots.')
     } finally {
@@ -339,8 +386,8 @@ export default function BookingWizard() {
         + Add New Vehicle
       </Button>
 
-      <Modal isOpen={addVehicleOpen} onClose={() => setAddVehicleOpen(false)} title="Add New Vehicle">
-        <AddVehicleForm onSubmit={handleAddVehicle} loading={addingVehicle} />
+      <Modal isOpen={addVehicleOpen} onClose={() => setAddVehicleOpen(false)} title="Add New Vehicle" size="lg">
+        <AddVehicleForm onSubmit={handleAddVehicle} loading={addingVehicle} defaultVehicleType={vehicleType} />
       </Modal>
     </div>
   )
@@ -375,7 +422,7 @@ export default function BookingWizard() {
               <p className="text-xs text-gray-500 mt-0.5">{s.category}</p>
               <div className="flex items-center justify-between mt-3">
                 <p className="text-lg font-bold text-primary">₹{s.price?.toLocaleString('en-IN')}</p>
-                <p className="text-xs text-gray-400">{s.durationMinutes} min</p>
+                <p className="text-xs text-gray-400">{s.duration} min</p>
               </div>
             </button>
           ))}
@@ -529,7 +576,7 @@ export default function BookingWizard() {
               <p className="text-xs text-gray-500 uppercase tracking-wide font-medium mb-1">Service</p>
               <p className="font-semibold text-gray-800">{selectedService?.name}</p>
               <p className="text-sm text-gray-500">
-                {selectedService?.durationMinutes} min · ₹{selectedService?.price?.toLocaleString('en-IN')}
+                {selectedService?.duration} min · ₹{selectedService?.price?.toLocaleString('en-IN')}
               </p>
             </div>
             <div>

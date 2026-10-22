@@ -3,7 +3,6 @@ import { Link, useNavigate } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import toast from 'react-hot-toast'
 import { partnerAPI } from '../api/partner'
-import { useAuth } from '../hooks/useAuth'
 import Button from '../components/ui/Button'
 import Input from '../components/ui/Input'
 
@@ -11,7 +10,6 @@ const SERVICE_CATEGORIES = ['Car', 'Bike', 'Scooty']
 
 export default function PartnerRegisterPage() {
   const navigate = useNavigate()
-  const { setSession } = useAuth()
   const [loading, setLoading] = useState(false)
   const [selectedCategories, setSelectedCategories] = useState([])
 
@@ -44,11 +42,8 @@ export default function PartnerRegisterPage() {
         password: data.password,
         serviceCategories: selectedCategories,
       })
-      const { token } = res.data
-      const user = res.data.data?.user || res.data.user
-      setSession(token, user)
-      toast.success('Partner account created!')
-      navigate('/partner')
+      toast.success('Partner account created! Please sign in.')
+      navigate('/partner-login')
     } catch (err) {
       toast.error(err.message || 'Registration failed.')
     } finally {
