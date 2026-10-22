@@ -1,5 +1,6 @@
 const COLORS = {
   pending: 'bg-yellow-100 text-yellow-800',
+  pending_verification: 'bg-amber-100 text-amber-800',
   confirmed: 'bg-blue-100 text-blue-800',
   in_progress: 'bg-orange-100 text-orange-800',
   completed: 'bg-green-100 text-green-800',
@@ -12,6 +13,7 @@ const COLORS = {
   refunded: 'bg-purple-100 text-purple-800',
   cod: 'bg-gray-100 text-gray-700',
   online: 'bg-blue-100 text-blue-700',
+  upi: 'bg-indigo-100 text-indigo-700',
   Car: 'bg-blue-100 text-blue-700',
   Bike: 'bg-green-100 text-green-700',
   Scooty: 'bg-purple-100 text-purple-700',

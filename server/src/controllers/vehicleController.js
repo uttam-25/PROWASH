@@ -25,17 +25,28 @@ export const getMyVehicles = async (req, res, next) => {
 // ---------------------------------------------------------------------------
 export const addVehicle = async (req, res, next) => {
   try {
-    const { type, make, model, year, licensePlate, color, photo } = req.body;
+    const existing = await Vehicle.findOne({ owner: req.user._id, isActive: true });
+    if (existing) {
+      return next(new AppError('You already have a registered vehicle. Update or replace it instead.', 409));
+    }
+
+    const {
+      type, make, model, year, licensePlate, color, photo,
+      // lookup-enriched fields
+      variant, vehicleClass, fuelType, registrationDate,
+      registrationState, rtoCode, rtoName, manufacturingYear,
+      emissionNorm, lookupProvider, lookupAt, lookupVerified,
+    } = req.body;
 
     const vehicle = await Vehicle.create({
       owner: req.user._id,
-      type,
-      make,
-      model,
-      year,
-      licensePlate,
-      color,
-      photo,
+      type, make, model, year, licensePlate, color, photo,
+      variant, vehicleClass, fuelType, registrationDate,
+      registrationState, rtoCode, rtoName, manufacturingYear,
+      emissionNorm,
+      lookupProvider: lookupProvider || 'manual',
+      lookupAt: lookupAt || null,
+      lookupVerified: lookupVerified || false,
     });
 
     res.status(201).json({ success: true, data: vehicle });
@@ -137,6 +148,76 @@ export const getAllVehicles = async (req, res, next) => {
         page,
         pages: Math.ceil(total / limit),
       },
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ---------------------------------------------------------------------------
+// PUT /api/vehicles/replace  (protect)
+// ---------------------------------------------------------------------------
+export const replaceVehicle = async (req, res, next) => {
+  try {
+    // Soft-delete all active vehicles for this customer
+    await Vehicle.updateMany({ owner: req.user._id, isActive: true }, { isActive: false });
+    const {
+      type, make, model, year, licensePlate, color, photo,
+      variant, vehicleClass, fuelType, registrationDate,
+      registrationState, rtoCode, rtoName, manufacturingYear,
+      emissionNorm, lookupProvider, lookupAt, lookupVerified,
+    } = req.body;
+    const vehicle = await Vehicle.create({
+      owner: req.user._id,
+      type, make, model, year, licensePlate, color, photo,
+      variant, vehicleClass, fuelType, registrationDate,
+      registrationState, rtoCode, rtoName, manufacturingYear,
+      emissionNorm,
+      lookupProvider: lookupProvider || 'manual',
+      lookupAt: lookupAt || null,
+      lookupVerified: lookupVerified || false,
+    });
+    res.status(201).json({ success: true, data: vehicle });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ---------------------------------------------------------------------------
+// POST /api/vehicles/lookup  (protect)
+// ---------------------------------------------------------------------------
+import {
+  normaliseRegNumber,
+  validateRegNumber,
+  lookupVehicle,
+} from '../services/vehicleLookupService.js';
+
+export const lookupVehicleByReg = async (req, res, next) => {
+  try {
+    const { registrationNumber } = req.body;
+
+    if (!registrationNumber) {
+      return next(new AppError('registrationNumber is required', 400));
+    }
+
+    const normalised = normaliseRegNumber(String(registrationNumber));
+
+    if (!validateRegNumber(normalised)) {
+      return res.status(400).json({
+        success: false,
+        message:
+          'Invalid registration number format. ' +
+          'Use the standard Indian format, e.g. MH12AB1234 or BH series 22BH1234AB.',
+        regNumber: normalised,
+      });
+    }
+
+    const result = await lookupVehicle(normalised);
+
+    // Respond with the lookup result — never 500 for "not found"
+    return res.json({
+      success: true,
+      data: result,
     });
   } catch (err) {
     next(err);

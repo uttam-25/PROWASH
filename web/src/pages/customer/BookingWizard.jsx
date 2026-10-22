@@ -145,9 +145,12 @@ export default function BookingWizard() {
     try {
       const res = await vehiclesAPI.getMyVehicles()
       const raw = res.data.data?.vehicles || res.data.data || []
-      setVehicles(Array.isArray(raw) ? raw.map(fromBackend) : [])
+      const list = Array.isArray(raw) ? raw.map(fromBackend) : []
+      setVehicles(list)
+      return list
     } catch {
       setVehiclesError('Failed to load vehicles.')
+      return []
     } finally {
       setVehiclesLoading(false)
     }
@@ -217,7 +220,12 @@ export default function BookingWizard() {
         paymentMethod,
         notes,
       })
-      setBookingResult(res.data.data?.booking || res.data.data)
+      const booking = res.data.data?.booking || res.data.data
+      if (paymentMethod === 'upi' && booking._id) {
+        navigate(`/dashboard/payment/${booking._id}`)
+        return
+      }
+      setBookingResult(booking)
     } catch (err) {
       toast.error(err.message || 'Booking failed. Please try again.')
     } finally {
@@ -227,7 +235,14 @@ export default function BookingWizard() {
 
   // Load data when entering relevant steps
   useEffect(() => {
-    if (currentStep === 2) fetchVehicles()
+    if (currentStep === 2) {
+      fetchVehicles().then(list => {
+        if (list.length === 1) {
+          setSelectedVehicle(list[0])
+          setCurrentStep(3)
+        }
+      })
+    }
   }, [currentStep])
 
   useEffect(() => {
@@ -383,7 +398,7 @@ export default function BookingWizard() {
         </div>
       )}
       <Button variant="outline" onClick={() => setAddVehicleOpen(true)}>
-        + Add New Vehicle
+        Register Your Vehicle
       </Button>
 
       <Modal isOpen={addVehicleOpen} onClose={() => setAddVehicleOpen(false)} title="Add New Vehicle" size="lg">
@@ -613,6 +628,7 @@ export default function BookingWizard() {
           <div className="flex gap-3">
             {[
               { value: 'cod', label: 'Cash on Delivery' },
+              { value: 'upi', label: 'UPI / QR Code' },
               { value: 'online', label: 'Online Payment' },
             ].map(pm => (
               <button
@@ -628,6 +644,11 @@ export default function BookingWizard() {
               </button>
             ))}
           </div>
+          {paymentMethod === 'upi' && (
+            <p className="text-xs text-blue-600 bg-blue-50 rounded-lg px-3 py-2">
+              You'll be shown a QR code to scan after confirming your booking.
+            </p>
+          )}
         </div>
 
         <Button

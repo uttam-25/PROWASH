@@ -19,12 +19,12 @@ const paymentSchema = new mongoose.Schema(
     },
     method: {
       type: String,
-      enum: ['cod', 'online'],
+      enum: ['cod', 'online', 'upi'],
       default: 'cod',
     },
     status: {
       type: String,
-      enum: ['unpaid', 'pending', 'paid', 'failed', 'refunded'],
+      enum: ['unpaid', 'pending', 'pending_verification', 'paid', 'failed', 'refunded'],
       default: 'unpaid',
     },
     gatewayOrderId: {
@@ -55,6 +55,13 @@ const paymentSchema = new mongoose.Schema(
     refundedAt: {
       type: Date,
     },
+    upiConfirmedAt: { type: Date },
+    upiRef: { type: String },
+    verifiedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    verifiedAt: { type: Date },
+    rejectedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    rejectedAt: { type: Date },
+    rejectionReason: { type: String },
   },
   { timestamps: true }
 );

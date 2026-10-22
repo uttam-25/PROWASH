@@ -112,7 +112,7 @@ export const bookingRules = [
     .isISO8601().withMessage('startAt must be a valid ISO 8601 date string'),
   body('paymentMethod')
     .notEmpty().withMessage('paymentMethod is required')
-    .isIn(['cod', 'online']).withMessage("paymentMethod must be 'cod' or 'online'"),
+    .isIn(['cod', 'online', 'upi']).withMessage("paymentMethod must be 'cod', 'online', or 'upi'"),
 ];
 
 export const rescheduleRules = [

@@ -305,3 +305,107 @@ export const updatePaymentStatus = async (req, res, next) => {
     next(err);
   }
 };
+
+// ---------------------------------------------------------------------------
+// POST /api/payments/confirm-upi  (protect)
+// ---------------------------------------------------------------------------
+export const confirmUPIPayment = async (req, res, next) => {
+  try {
+    const { bookingId, upiRef } = req.body;
+    if (!bookingId) return next(new AppError('bookingId is required', 400));
+
+    const booking = await Booking.findById(bookingId);
+    if (!booking) return next(new AppError('Booking not found', 404));
+    if (booking.customerId.toString() !== req.user._id.toString()) {
+      return next(new AppError('Not authorised for this booking', 403));
+    }
+
+    let payment = await Payment.findOne({ bookingId });
+    if (!payment) {
+      payment = await Payment.create({
+        bookingId,
+        customerId: req.user._id,
+        amount: booking.priceAtBooking,
+        method: 'upi',
+        status: 'pending_verification',
+        upiConfirmedAt: new Date(),
+        upiRef: upiRef || undefined,
+      });
+    } else {
+      if (['pending_verification', 'paid'].includes(payment.status)) {
+        return next(new AppError('Payment confirmation already submitted or payment already verified.', 409));
+      }
+      payment.method = 'upi';
+      payment.status = 'pending_verification';
+      payment.upiConfirmedAt = new Date();
+      if (upiRef) payment.upiRef = upiRef;
+      await payment.save();
+    }
+
+    booking.paymentStatus = 'pending_verification';
+    await booking.save();
+
+    return res.json({ success: true, data: { status: 'pending_verification' } });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ---------------------------------------------------------------------------
+// GET /api/admin/payments/pending  (protect + requireAdmin)
+// ---------------------------------------------------------------------------
+export const getPendingVerifications = async (req, res, next) => {
+  try {
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.min(50, Math.max(1, parseInt(req.query.limit) || 20));
+    const skip = (page - 1) * limit;
+    const filter = { status: 'pending_verification' };
+    const total = await Payment.countDocuments(filter);
+    const items = await Payment.find(filter)
+      .populate('bookingId', 'bookingReference serviceNameSnapshot startAt priceAtBooking')
+      .populate('customerId', 'name email phone')
+      .sort({ createdAt: 1 })
+      .skip(skip)
+      .limit(limit);
+    res.json({ success: true, data: { items, total, page, pages: Math.ceil(total / limit) } });
+  } catch (err) { next(err); }
+};
+
+// ---------------------------------------------------------------------------
+// PATCH /api/admin/payments/:id/verify  (protect + requireAdmin)
+// ---------------------------------------------------------------------------
+export const verifyUPIPayment = async (req, res, next) => {
+  try {
+    const payment = await Payment.findById(req.params.id);
+    if (!payment) return next(new AppError('Payment not found', 404));
+    if (payment.status !== 'pending_verification') {
+      return next(new AppError('Payment is not pending verification', 400));
+    }
+    payment.status = 'paid';
+    payment.verifiedBy = req.user._id;
+    payment.verifiedAt = new Date();
+    await payment.save();
+    await Booking.findByIdAndUpdate(payment.bookingId, { paymentStatus: 'paid' });
+    res.json({ success: true, data: payment });
+  } catch (err) { next(err); }
+};
+
+// ---------------------------------------------------------------------------
+// PATCH /api/admin/payments/:id/reject  (protect + requireAdmin)
+// ---------------------------------------------------------------------------
+export const rejectUPIPayment = async (req, res, next) => {
+  try {
+    const payment = await Payment.findById(req.params.id);
+    if (!payment) return next(new AppError('Payment not found', 404));
+    if (payment.status !== 'pending_verification') {
+      return next(new AppError('Payment is not pending verification', 400));
+    }
+    payment.status = 'unpaid';
+    payment.rejectedBy = req.user._id;
+    payment.rejectedAt = new Date();
+    payment.rejectionReason = req.body.reason || '';
+    await payment.save();
+    await Booking.findByIdAndUpdate(payment.bookingId, { paymentStatus: 'unpaid' });
+    res.json({ success: true, data: payment });
+  } catch (err) { next(err); }
+};

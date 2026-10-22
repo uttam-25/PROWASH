@@ -22,6 +22,11 @@ import {
 } from '../controllers/adminController.js';
 import { createService, updateService, deleteService } from '../controllers/serviceController.js';
 import { getBookingById } from '../controllers/bookingController.js';
+import {
+  getPendingVerifications,
+  verifyUPIPayment,
+  rejectUPIPayment,
+} from '../controllers/paymentController.js';
 import { protect, requireAdmin } from '../middleware/auth.js';
 import { validate, serviceRules } from '../middleware/validate.js';
 
@@ -67,6 +72,9 @@ router.get('/bookings/:id', protect, requireAdmin, getBookingById);
 router.patch('/bookings/:id/status', protect, requireAdmin, updateBookingStatus);
 
 // Payments
+router.get('/payments/pending', protect, requireAdmin, getPendingVerifications);
+router.patch('/payments/:id/verify', protect, requireAdmin, verifyUPIPayment);
+router.patch('/payments/:id/reject', protect, requireAdmin, rejectUPIPayment);
 router.get('/payments', protect, requireAdmin, getPayments);
 router.patch('/payments/:id/collect', protect, requireAdmin, recordCODCollection);
 

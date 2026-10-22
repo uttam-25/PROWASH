@@ -27,6 +27,7 @@ const MyBookingsPage = lazy(() => import('./pages/customer/MyBookingsPage'))
 const BookingDetailPage = lazy(() => import('./pages/customer/BookingDetailPage'))
 const NotificationsPage = lazy(() => import('./pages/customer/NotificationsPage'))
 const ProfilePage = lazy(() => import('./pages/customer/ProfilePage'))
+const QRPaymentPage = lazy(() => import('./pages/customer/QRPaymentPage'))
 
 // Admin pages (lazy)
 const AdminDashboardPage = lazy(() => import('./pages/admin/AdminDashboardPage'))
@@ -104,6 +105,7 @@ export default function App() {
           <Route path="bookings/:id" element={<BookingDetailPage />} />
           <Route path="notifications" element={<NotificationsPage />} />
           <Route path="profile" element={<ProfilePage />} />
+          <Route path="payment/:bookingId" element={<QRPaymentPage />} />
         </Route>
 
         {/* Admin routes */}
