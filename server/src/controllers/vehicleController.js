@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import Vehicle from '../models/Vehicle.js';
 import { AppError } from '../middleware/errorHandler.js';
 
@@ -158,16 +159,22 @@ export const getAllVehicles = async (req, res, next) => {
 // PUT /api/vehicles/replace  (protect)
 // ---------------------------------------------------------------------------
 export const replaceVehicle = async (req, res, next) => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
   try {
-    // Soft-delete all active vehicles for this customer
-    await Vehicle.updateMany({ owner: req.user._id, isActive: true }, { isActive: false });
+    // Soft-delete all active vehicles for this customer (within the transaction)
+    await Vehicle.updateMany(
+      { owner: req.user._id, isActive: true },
+      { isActive: false },
+      { session }
+    );
     const {
       type, make, model, year, licensePlate, color, photo,
       variant, vehicleClass, fuelType, registrationDate,
       registrationState, rtoCode, rtoName, manufacturingYear,
       emissionNorm, lookupProvider, lookupAt, lookupVerified,
     } = req.body;
-    const vehicle = await Vehicle.create({
+    const [vehicle] = await Vehicle.create([{
       owner: req.user._id,
       type, make, model, year, licensePlate, color, photo,
       variant, vehicleClass, fuelType, registrationDate,
@@ -176,10 +183,14 @@ export const replaceVehicle = async (req, res, next) => {
       lookupProvider: lookupProvider || 'manual',
       lookupAt: lookupAt || null,
       lookupVerified: lookupVerified || false,
-    });
+    }], { session });
+    await session.commitTransaction();
     res.status(201).json({ success: true, data: vehicle });
   } catch (err) {
+    await session.abortTransaction();
     next(err);
+  } finally {
+    session.endSession();
   }
 };
 

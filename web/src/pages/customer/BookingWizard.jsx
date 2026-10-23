@@ -203,7 +203,17 @@ export default function BookingWizard() {
       setAddVehicleOpen(false)
       await fetchVehicles()
     } catch (err) {
-      toast.error(err.message || 'Failed to add vehicle.')
+      // 409 = customer already has a vehicle registered
+      if (err.message?.includes('already have')) {
+        toast.error(
+          'You already have a vehicle registered. Go to My Vehicle to update or replace it.',
+          { duration: 6000 }
+        )
+        setAddVehicleOpen(false)
+        await fetchVehicles()
+      } else {
+        toast.error(err.message || 'Failed to add vehicle.', { duration: 5000 })
+      }
     } finally {
       setAddingVehicle(false)
     }
