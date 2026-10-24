@@ -106,8 +106,8 @@ export async function getAvailableSlots(serviceId, dateString) {
     candidates.push({ startAt: slotStartUTC, endAt: slotEndUTC });
   }
 
-  // 9. Filter: must be at least 2 hours in the future
-  const cutoff = new Date(Date.now() + 2 * 60 * 60 * 1000);
+  // 9. Filter: must be at least 1 hour in the future (gives customers reasonable same-day booking window)
+  const cutoff = new Date(Date.now() + 1 * 60 * 60 * 1000);
   const futureSlots = candidates.filter((s) => s.startAt >= cutoff);
 
   // 10. Filter breaks
@@ -140,7 +140,7 @@ export async function getAvailableSlots(serviceId, dateString) {
     const count = await Booking.countDocuments({
       startAt: { $lt: slot.endAt },
       endAt: { $gt: slot.startAt },
-      status: { $nin: ['cancelled', 'rejected'] },
+      status: { $nin: ['cancelled', 'rejected', 'rescheduled'] },
     });
     if (count < schedule.maxConcurrentBookings) {
       available.push({

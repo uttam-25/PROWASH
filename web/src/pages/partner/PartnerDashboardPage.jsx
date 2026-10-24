@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Briefcase, DollarSign, Star, ToggleLeft, ToggleRight, MapPin } from 'lucide-react'
+import { Briefcase, DollarSign, Star, MapPin } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
 import toast from 'react-hot-toast'
 import { partnerAPI } from '../../api/partner'
@@ -98,6 +98,16 @@ export default function PartnerDashboardPage() {
 
   useEffect(() => { loadData() }, [])
 
+  // Auto-refresh requests every 30 seconds
+  useEffect(() => {
+    const interval = setInterval(() => {
+      partnerAPI.getNearbyRequests()
+        .then(res => setRequests(res.data.data.requests || []))
+        .catch(() => {})
+    }, 30000)
+    return () => clearInterval(interval)
+  }, [])
+
   if (loading) return <Spinner message="Loading dashboard..." />
 
   return (
@@ -107,29 +117,46 @@ export default function PartnerDashboardPage() {
         <p className="text-gray-500 mt-1">Manage your availability and jobs.</p>
       </div>
 
-      {/* Availability Toggle */}
-      <div className="card p-5 flex items-center justify-between">
-        <div>
-          <p className="font-semibold text-gray-800">Availability</p>
-          <p className="text-sm text-gray-500 mt-0.5">
-            {profile?.isAvailable ? 'You are currently available for jobs' : 'You are currently offline'}
-          </p>
+      {/* Verification banner */}
+      {profile && !profile.isVerified && (
+        <div className="rounded-xl bg-yellow-50 border border-yellow-200 px-5 py-4 flex items-start gap-3">
+          <span className="text-yellow-500 text-xl">⚠️</span>
+          <div>
+            <p className="font-semibold text-yellow-800">Account Pending Verification</p>
+            <p className="text-sm text-yellow-700 mt-0.5">
+              Your account is pending admin verification. You will be able to receive and accept booking requests once verified.
+            </p>
+          </div>
         </div>
-        <button
-          onClick={handleToggleAvailability}
-          disabled={toggling}
-          className={`flex items-center gap-2 px-4 py-2 rounded-xl font-medium text-sm transition-all ${
-            profile?.isAvailable
-              ? 'bg-green-100 text-green-700 hover:bg-green-200'
-              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-          }`}
-        >
-          {profile?.isAvailable ? (
-            <><ToggleRight className="w-5 h-5" /> Online</>
-          ) : (
-            <><ToggleLeft className="w-5 h-5" /> Offline</>
-          )}
-        </button>
+      )}
+
+      {/* Availability Toggle */}
+      <div className="card p-6">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div>
+            <p className="font-semibold text-gray-800 text-lg">Availability Status</p>
+            <p className="text-sm text-gray-500 mt-0.5">
+              {profile?.isAvailable
+                ? '🟢 You are Online — ready to receive booking requests'
+                : '⚫ You are Offline — you will not receive new requests'}
+            </p>
+          </div>
+          <button
+            onClick={handleToggleAvailability}
+            disabled={toggling}
+            className={`min-w-[160px] px-6 py-3 rounded-xl font-bold text-base transition-all shadow-sm ${
+              profile?.isAvailable
+                ? 'bg-red-500 hover:bg-red-600 text-white'
+                : 'bg-green-500 hover:bg-green-600 text-white'
+            } disabled:opacity-60 disabled:cursor-not-allowed`}
+          >
+            {toggling
+              ? 'Updating...'
+              : profile?.isAvailable
+              ? '🔴 GO OFFLINE'
+              : '🟢 GO ONLINE'}
+          </button>
+        </div>
       </div>
 
       {/* Stats */}
@@ -222,22 +249,33 @@ export default function PartnerDashboardPage() {
           <div className="space-y-3">
             {requests.map((req) => (
               <div key={req._id} className="card p-5 flex items-start justify-between gap-4">
-                <div className="space-y-1.5">
-                  <p className="font-semibold text-gray-800">
-                    {req.serviceId?.name || req.serviceNameSnapshot}
+                <div className="space-y-1.5 flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <p className="font-semibold text-gray-800">
+                      {req.serviceId?.name || req.serviceNameSnapshot}
+                    </p>
+                    <span className="text-lg font-bold text-[#147DAB]">
+                      ₹{req.priceAtBooking?.toLocaleString('en-IN')}
+                    </span>
+                  </div>
+                  <p className="text-sm text-gray-600">
+                    {req.vehicleId?.type || ''} · {req.vehicleId?.make} {req.vehicleId?.model}
+                    {req.vehicleId?.licensePlate ? ` · ${req.vehicleId.licensePlate}` : ''}
                   </p>
-                  <p className="text-sm text-gray-500">
-                    {req.vehicleId?.make} {req.vehicleId?.model}
-                  </p>
+                  {req.customerId?.name && (
+                    <p className="text-sm text-gray-500">Customer: {req.customerId.name}</p>
+                  )}
                   {req.customerLocation?.address && (
                     <p className="text-xs text-gray-400 flex items-center gap-1">
-                      <MapPin className="w-3 h-3" />
+                      <MapPin className="w-3 h-3 shrink-0" />
                       {req.customerLocation.address}
                     </p>
                   )}
-                  <p className="text-lg font-bold text-[#147DAB]">
-                    ₹{req.priceAtBooking?.toLocaleString('en-IN')}
-                  </p>
+                  {req.startAt && (
+                    <p className="text-xs text-gray-400">
+                      {format(parseISO(req.startAt), 'dd MMM yyyy, hh:mm a')}
+                    </p>
+                  )}
                 </div>
                 <div className="flex flex-col gap-2 shrink-0">
                   <Button

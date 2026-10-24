@@ -113,6 +113,10 @@ export default function BookingWizard() {
   const [selectedSlot, setSelectedSlot] = useState(null)
   const [notes, setNotes] = useState('')
   const [paymentMethod, setPaymentMethod] = useState(null)
+  const [serviceAddress, setServiceAddress] = useState('')
+  const [serviceLat, setServiceLat] = useState('')
+  const [serviceLng, setServiceLng] = useState('')
+  const [addressError, setAddressError] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [bookingResult, setBookingResult] = useState(null)
   const [liveStatus, setLiveStatus] = useState(null)
@@ -221,6 +225,11 @@ export default function BookingWizard() {
 
   async function handleConfirm() {
     if (!selectedVehicle || !selectedService || !selectedSlot || !paymentMethod) return
+    if (!serviceAddress.trim()) {
+      setAddressError('Service address is required.')
+      return
+    }
+    setAddressError('')
     setSubmitting(true)
     try {
       const res = await bookingsAPI.createBooking({
@@ -229,6 +238,11 @@ export default function BookingWizard() {
         startAt: selectedSlot.startAt,
         paymentMethod,
         notes,
+        customerLocation: {
+          address: serviceAddress,
+          lat: serviceLat ? parseFloat(serviceLat) : undefined,
+          lng: serviceLng ? parseFloat(serviceLng) : undefined,
+        },
       })
       const booking = res.data.data?.booking || res.data.data
       if (paymentMethod === 'upi' && booking._id) {
@@ -620,10 +634,47 @@ export default function BookingWizard() {
           </div>
         </div>
 
+        {/* Customer Address for partner to reach */}
+        <div className="space-y-2">
+          <label className="block text-sm font-medium text-gray-700">
+            Service Address <span className="text-red-500">*</span>
+          </label>
+          <input
+            type="text"
+            className="input"
+            placeholder="Enter your address where the washing should happen"
+            value={serviceAddress}
+            onChange={e => { setServiceAddress(e.target.value); setAddressError('') }}
+          />
+          {addressError && (
+            <p className="text-xs text-red-500">{addressError}</p>
+          )}
+          <div className="grid grid-cols-2 gap-2">
+            <input
+              type="number"
+              step="any"
+              className="input text-sm"
+              placeholder="Latitude (e.g. 12.9716)"
+              value={serviceLat}
+              onChange={e => setServiceLat(e.target.value)}
+            />
+            <input
+              type="number"
+              step="any"
+              className="input text-sm"
+              placeholder="Longitude (e.g. 77.5946)"
+              value={serviceLng}
+              onChange={e => setServiceLng(e.target.value)}
+            />
+          </div>
+          <p className="text-xs text-gray-400">
+            💡 Tip: You can find your coordinates at maps.google.com — right-click your location.
+          </p>
+        </div>
+
         {/* Notes */}
         <div className="space-y-1">
-          <label className="block text-sm font-medium text-gray-700">Notes (optional)</label>
-          <textarea
+          <label className="block text-sm font-medium text-gray-700">Notes (optional)</label>          <textarea
             className="input"
             rows={3}
             placeholder="Any special instructions..."

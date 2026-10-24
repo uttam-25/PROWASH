@@ -5,6 +5,7 @@ import Payment from '../models/Payment.js';
 import Notification from '../models/Notification.js';
 import { notifyBookingCreated, notifyBookingCancelled } from '../services/notificationService.js';
 import { getAvailableSlots } from '../services/availabilityService.js';
+import { tryAssignPartner } from '../services/partnerAssignmentService.js';
 import { AppError } from '../middleware/errorHandler.js';
 
 // Helper: get IST date string 'YYYY-MM-DD' from a Date or ISO string
@@ -17,7 +18,7 @@ function toISTDateString(dateInput) {
 // ---------------------------------------------------------------------------
 export const createBooking = async (req, res, next) => {
   try {
-    const { vehicleId, serviceId, startAt: startAtRaw, paymentMethod, notes } = req.body;
+    const { vehicleId, serviceId, startAt: startAtRaw, paymentMethod, notes, customerLocation } = req.body;
 
     // Basic validation
     if (!vehicleId || !serviceId || !startAtRaw || !paymentMethod) {
@@ -52,7 +53,8 @@ export const createBooking = async (req, res, next) => {
     // Server-side availability re-check
     const dateString = toISTDateString(startAt);
     const slots = await getAvailableSlots(serviceId, dateString);
-    const slotMatch = slots.find((s) => s.startAt === startAt.toISOString());
+    const startAtMs = startAt.getTime();
+    const slotMatch = slots.find((s) => Math.abs(new Date(s.startAt).getTime() - startAtMs) < 60000);
 
     if (!slotMatch) {
       return res.status(409).json({
@@ -73,6 +75,7 @@ export const createBooking = async (req, res, next) => {
       endAt,
       paymentMethod,
       notes,
+      customerLocation: customerLocation || undefined,
       status: 'pending',
       paymentStatus: 'unpaid',
       statusHistory: [
@@ -109,6 +112,33 @@ export const createBooking = async (req, res, next) => {
 
     // Notify customer (fire-and-forget)
     notifyBookingCreated(booking, req.user).catch(console.error);
+
+    // Try automatic geo-based partner assignment (fire-and-forget — does not block the response)
+    if (booking.customerLocation?.lat && booking.customerLocation?.lng) {
+      Booking.findById(booking._id)
+        .populate('vehicleId', 'type make model')
+        .then(populatedBooking => {
+          if (!populatedBooking) return;
+          return tryAssignPartner(populatedBooking);
+        })
+        .then(assignedPartner => {
+          if (!assignedPartner) return;
+          // Emit socket event to notify the assigned partner and the booking room
+          import('../services/socketService.js').then(({ emitToBooking, emitToPartner }) => {
+            emitToBooking(booking._id.toString(), 'booking:assigned', {
+              bookingId: booking._id,
+              partnerName: assignedPartner.userId?.name,
+              status: 'partner_assigned',
+            });
+            if (emitToPartner && assignedPartner.userId?._id) {
+              emitToPartner(assignedPartner.userId._id.toString(), 'job:assigned', {
+                bookingId: booking._id,
+              });
+            }
+          }).catch(() => {});
+        })
+        .catch(err => console.error('[PartnerAssignment]', err.message));
+    }
 
     // Populate and return
     const populated = await Booking.findById(booking._id)
@@ -263,7 +293,8 @@ export const rescheduleBooking = async (req, res, next) => {
     const newEndAt = new Date(newStartAt.getTime() + service.duration * 60000);
     const dateString = toISTDateString(newStartAt);
     const slots = await getAvailableSlots(booking.serviceId.toString(), dateString);
-    const slotMatch = slots.find((s) => s.startAt === newStartAt.toISOString());
+    const newStartAtMs = newStartAt.getTime();
+    const slotMatch = slots.find((s) => Math.abs(new Date(s.startAt).getTime() - newStartAtMs) < 60000);
 
     if (!slotMatch) {
       return res.status(409).json({
