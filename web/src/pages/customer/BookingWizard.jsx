@@ -17,6 +17,27 @@ import Select from '../../components/ui/Select'
 import VehicleRegistrationLookup from '../../components/VehicleRegistrationLookup'
 
 const STEPS = ['Vehicle Type', 'Select Vehicle', 'Select Service', 'Date & Time', 'Review & Confirm']
+const ADDRESS_FIELDS = [
+  { name: 'houseNumber', label: 'House number / building name', placeholder: 'e.g. 12, Green View Apartments' },
+  { name: 'street', label: 'Street / road', placeholder: 'Street or road' },
+  { name: 'area', label: 'Area / locality', placeholder: 'Area or locality' },
+  { name: 'city', label: 'City', placeholder: 'City' },
+  { name: 'state', label: 'State', placeholder: 'State' },
+  { name: 'pinCode', label: 'PIN code', placeholder: '6-digit PIN code' },
+  { name: 'landmark', label: 'Landmark (optional)', placeholder: 'Nearby landmark' },
+]
+
+function formatServiceAddress(address) {
+  return [
+    address.houseNumber,
+    address.street,
+    address.area,
+    address.landmark ? `Near ${address.landmark}` : '',
+    address.city,
+    address.state,
+    address.pinCode,
+  ].filter(Boolean).join(', ')
+}
 
 const VEHICLE_TYPE_OPTIONS = [
   { value: '', label: 'Select type' },
@@ -113,11 +134,25 @@ export default function BookingWizard() {
   const [selectedSlot, setSelectedSlot] = useState(null)
   const [notes, setNotes] = useState('')
   const [paymentMethod, setPaymentMethod] = useState(null)
-  const [serviceAddress, setServiceAddress] = useState('')
+  const [serviceAddress, setServiceAddress] = useState({
+    houseNumber: '',
+    street: '',
+    area: '',
+    city: '',
+    state: '',
+    pinCode: '',
+    landmark: '',
+  })
   const [serviceLat, setServiceLat] = useState('')
   const [serviceLng, setServiceLng] = useState('')
   const [addressError, setAddressError] = useState('')
+  const [locationMessage, setLocationMessage] = useState('')
+  const [locationMessageType, setLocationMessageType] = useState('')
+  const [locationSource, setLocationSource] = useState('manual')
+  const [locating, setLocating] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+  const confirmInFlightRef = useRef(false)
+  const confirmRequestRef = useRef({ fingerprint: null, requestId: null })
   const [bookingResult, setBookingResult] = useState(null)
   const [liveStatus, setLiveStatus] = useState(null)
   const [partnerInfo, setPartnerInfo] = useState(null)
@@ -224,37 +259,146 @@ export default function BookingWizard() {
   }
 
   async function handleConfirm() {
-    if (!selectedVehicle || !selectedService || !selectedSlot || !paymentMethod) return
-    if (!serviceAddress.trim()) {
-      setAddressError('Service address is required.')
+    if (confirmInFlightRef.current) return
+    if (!selectedVehicle?._id) {
+      toast.error('Select a vehicle before confirming your booking.')
+      return
+    }
+    if (!selectedService?._id) {
+      toast.error('Select a valid service before confirming your booking.')
+      return
+    }
+    if (!selectedSlot?.startAt || Number.isNaN(new Date(selectedSlot.startAt).getTime())) {
+      toast.error('Select a valid booking date and time.')
+      return
+    }
+    if (!paymentMethod) {
+      toast.error('Select a payment method before confirming your booking.')
+      return
+    }
+    const requiredAddressValues = [
+      serviceAddress.houseNumber,
+      serviceAddress.street,
+      serviceAddress.area,
+      serviceAddress.city,
+      serviceAddress.state,
+    ]
+    if (requiredAddressValues.some(value => !value.trim())) {
+      setAddressError('Enter the house/building, street, area, city and state.')
+      return
+    }
+    if (!/^[1-9]\d{5}$/.test(serviceAddress.pinCode.trim())) {
+      setAddressError('Enter a valid 6-digit PIN code.')
+      return
+    }
+    const hasLat = serviceLat.trim() !== ''
+    const hasLng = serviceLng.trim() !== ''
+    const lat = hasLat ? Number(serviceLat) : NaN
+    const lng = hasLng ? Number(serviceLng) : NaN
+    if (locationSource === 'gps' &&
+        (!hasLat || !hasLng || !Number.isFinite(lat) || lat < -90 || lat > 90 ||
+         !Number.isFinite(lng) || lng < -180 || lng > 180)) {
+      setAddressError('The detected coordinates are invalid. Detect your location again or enter the address manually.')
       return
     }
     setAddressError('')
+    const address = formatServiceAddress(serviceAddress)
+    confirmInFlightRef.current = true
     setSubmitting(true)
     try {
-      const res = await bookingsAPI.createBooking({
+      const requestData = {
         vehicleId: selectedVehicle._id,
         serviceId: selectedService._id,
         startAt: selectedSlot.startAt,
         paymentMethod,
         notes,
         customerLocation: {
-          address: serviceAddress,
-          lat: serviceLat ? parseFloat(serviceLat) : undefined,
-          lng: serviceLng ? parseFloat(serviceLng) : undefined,
+          address,
+          ...serviceAddress,
+          ...(hasLat && hasLng ? { lat, lng } : {}),
+          locationSource: hasLat && hasLng ? locationSource : 'manual',
         },
-      })
+      }
+      const fingerprint = JSON.stringify(requestData)
+      if (confirmRequestRef.current.fingerprint !== fingerprint) {
+        confirmRequestRef.current = {
+          fingerprint,
+          requestId: window.crypto.randomUUID(),
+        }
+      }
+      const res = await bookingsAPI.createBooking(requestData, confirmRequestRef.current.requestId)
       const booking = res.data.data?.booking || res.data.data
       if (paymentMethod === 'upi' && booking._id) {
         navigate(`/dashboard/payment/${booking._id}`)
         return
       }
       setBookingResult(booking)
+      setLiveStatus(booking.status)
+      if (booking.locationMatchStatus === 'location_required') {
+        toast.error('Your address was saved, but nearby partner assignment is waiting for a valid location.')
+      }
+      if (booking.partnerId && typeof booking.partnerId === 'object') {
+        setPartnerInfo({ ...booking.partnerId, partnerDistanceKm: booking.partnerDistanceKm })
+      }
     } catch (err) {
       toast.error(err.message || 'Booking failed. Please try again.')
     } finally {
+      confirmInFlightRef.current = false
       setSubmitting(false)
     }
+  }
+
+  function useCurrentLocation() {
+    setAddressError('')
+    setLocationMessage('')
+    setServiceLat('')
+    setServiceLng('')
+    setLocationSource('manual')
+    if (!navigator.geolocation) {
+      setLocationMessage('Your browser does not support location detection. Please enter your address manually.')
+      setLocationMessageType('error')
+      return
+    }
+    setLocating(true)
+    navigator.geolocation.getCurrentPosition(
+      async ({ coords }) => {
+        setServiceLat(String(coords.latitude))
+        setServiceLng(String(coords.longitude))
+        setLocationSource('gps')
+        try {
+          const response = await bookingsAPI.reverseGeocode({
+            lat: coords.latitude,
+            lng: coords.longitude,
+          })
+          const result = response.data.data
+          const detectedAddress = result?.address || {}
+          setServiceAddress(current => Object.fromEntries(
+            ADDRESS_FIELDS.map(({ name }) => [
+              name,
+              detectedAddress[name]?.trim() ? detectedAddress[name] : current[name],
+            ])
+          ))
+          setLocationMessage('Location detected. Review and complete any missing address fields.')
+          setLocationMessageType('success')
+        } catch {
+          setLocationMessage('Location detected, but we could not retrieve the address. Please enter your address manually.')
+          setLocationMessageType('error')
+        } finally {
+          setLocating(false)
+        }
+      },
+      (error) => {
+        const messages = {
+          1: 'Location permission denied. Please allow location access or enter your service address manually.',
+          2: 'Unable to detect your current location. Please enter your service address manually.',
+          3: 'Location request timed out. Please try again.',
+        }
+        setLocationMessage(messages[error.code] || 'Unable to detect your current location. Please enter your service address manually.')
+        setLocationMessageType('error')
+        setLocating(false)
+      },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+    )
   }
 
   // Load data when entering relevant steps
@@ -306,7 +450,9 @@ export default function BookingWizard() {
         const b = res.data.data?.booking || res.data.data
         if (b?.status) setLiveStatus(b.status)
         // partnerId is populated server-side to { _id, name, phone }
-        if (b?.partnerId && typeof b.partnerId === 'object') setPartnerInfo(b.partnerId)
+        if (b?.partnerId && typeof b.partnerId === 'object') {
+          setPartnerInfo({ ...b.partnerId, partnerDistanceKm: b.partnerDistanceKm })
+        }
       } catch {}
     }, 10000)
 
@@ -545,6 +691,7 @@ export default function BookingWizard() {
     pending:           '⏳ Booking Pending',
     searching_partner: '🔍 Searching for a Cleaning Partner...',
     partner_assigned:  '✅ Partner Assigned',
+    partner_accepted:  '🤝 Partner Accepted',
     partner_on_way:    '🚗 Partner is on the Way',
     partner_arrived:   '📍 Partner Arrived',
     in_progress:       '🧼 Cleaning in Progress',
@@ -557,19 +704,33 @@ export default function BookingWizard() {
     if (bookingResult) {
       const displayStatus = liveStatus || bookingResult.status
       const isSearching = ['pending', 'searching_partner'].includes(displayStatus)
+      const locationRequired = bookingResult.locationMatchStatus === 'location_required'
 
       return (
         <div className="text-center py-10 space-y-6">
           <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto">
             <Check className="w-8 h-8 text-green-600" />
           </div>
-          <h2 className="text-2xl font-bold text-gray-800">Booking Confirmed!</h2>
+          <h2 className="text-2xl font-bold text-gray-800">
+            {locationRequired ? 'Booking Request Received' : 'Booking Confirmed!'}
+          </h2>
           <p className="text-gray-500">
             Your booking reference is{' '}
             <span className="font-bold text-gray-800 font-mono">
               {bookingResult.bookingReference || bookingResult._id}
             </span>
           </p>
+          {bookingResult.customerLocation?.address && (
+            <div className="card p-4 mx-auto max-w-lg text-left">
+              <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-1">Service Address</p>
+              <p className="text-sm text-gray-800">{bookingResult.customerLocation.address}</p>
+            </div>
+          )}
+          {locationRequired && (
+            <p className="mx-auto max-w-lg rounded-lg bg-amber-50 p-3 text-sm text-amber-800">
+              Your address was saved, but we could not determine its coordinates. Nearby partner assignment cannot proceed until a valid location is available.
+            </p>
+          )}
 
           {/* Live status card */}
           <div className={`card p-5 mx-auto max-w-sm border-2 ${
@@ -589,6 +750,19 @@ export default function BookingWizard() {
             {partnerInfo?.name && (
               <p className="text-sm text-gray-500 mt-2">
                 Partner: <span className="font-medium text-gray-700">{partnerInfo.name}</span>
+                {partnerInfo.phone && <span> · {partnerInfo.phone}</span>}
+              </p>
+            )}
+            {partnerInfo?.partnerDistanceKm != null && (
+              <p className="text-sm text-gray-500 mt-1">
+                {Number(partnerInfo.partnerDistanceKm).toFixed(2)} km away
+              </p>
+            )}
+            {isSearching && (
+              <p className="text-sm text-gray-500 mt-2">
+                {locationRequired
+                  ? 'Nearby partner search is waiting for valid coordinates for this address.'
+                  : 'No nearby online partner is available right now. Your booking is pending. We will assign a partner when one becomes available.'}
               </p>
             )}
           </div>
@@ -631,6 +805,10 @@ export default function BookingWizard() {
                 </>
               )}
             </div>
+            <div className="sm:col-span-2">
+              <p className="text-xs text-gray-500 uppercase tracking-wide font-medium mb-1">Service Address</p>
+              <p className="text-sm text-gray-800">{formatServiceAddress(serviceAddress) || 'Enter your service address below'}</p>
+            </div>
           </div>
         </div>
 
@@ -639,36 +817,44 @@ export default function BookingWizard() {
           <label className="block text-sm font-medium text-gray-700">
             Service Address <span className="text-red-500">*</span>
           </label>
-          <input
-            type="text"
-            className="input"
-            placeholder="Enter your address where the washing should happen"
-            value={serviceAddress}
-            onChange={e => { setServiceAddress(e.target.value); setAddressError('') }}
-          />
-          {addressError && (
-            <p className="text-xs text-red-500">{addressError}</p>
-          )}
-          <div className="grid grid-cols-2 gap-2">
-            <input
-              type="number"
-              step="any"
-              className="input text-sm"
-              placeholder="Latitude (e.g. 12.9716)"
-              value={serviceLat}
-              onChange={e => setServiceLat(e.target.value)}
-            />
-            <input
-              type="number"
-              step="any"
-              className="input text-sm"
-              placeholder="Longitude (e.g. 77.5946)"
-              value={serviceLng}
-              onChange={e => setServiceLng(e.target.value)}
-            />
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            {ADDRESS_FIELDS.map(({ name, label, placeholder }) => (
+              <label key={name} className={`block text-sm font-medium text-gray-700 ${name === 'landmark' ? 'sm:col-span-2' : ''}`}>
+                {label}{name !== 'landmark' && <span className="text-red-500"> *</span>}
+                <input
+                  type="text"
+                  className="input mt-1"
+                  placeholder={placeholder}
+                  value={serviceAddress[name]}
+                  required={name !== 'landmark'}
+                  maxLength={name === 'pinCode' ? 6 : 120}
+                  inputMode={name === 'pinCode' ? 'numeric' : 'text'}
+                  disabled={locating}
+                  onChange={event => {
+                    setServiceAddress(current => ({ ...current, [name]: event.target.value }))
+                    setServiceLat('')
+                    setServiceLng('')
+                    setLocationSource('manual')
+                    setLocationMessage('')
+                    setAddressError('')
+                  }}
+                />
+              </label>
+            ))}
           </div>
+          {locationMessage && (
+            <p className={`text-sm ${locationMessageType === 'success' ? 'text-green-700' : 'text-red-600'}`} role="status">
+              {locationMessage}
+            </p>
+          )}
+          {addressError && (
+            <p className="text-sm text-red-600" role="alert">{addressError}</p>
+          )}
+          <Button type="button" variant="outline" size="sm" loading={locating} disabled={locating} onClick={useCurrentLocation}>
+            {locating ? 'Detecting location…' : locationMessageType === 'error' ? 'Retry location detection' : 'Use my current location'}
+          </Button>
           <p className="text-xs text-gray-400">
-            💡 Tip: You can find your coordinates at maps.google.com — right-click your location.
+            We use your permission-based location or geocode your entered address to find an online partner within 2 km. If location lookup is unavailable, your address can still be saved but nearby assignment will wait for valid coordinates.
           </p>
         </div>
 
@@ -716,7 +902,7 @@ export default function BookingWizard() {
           className="w-full"
           size="lg"
           loading={submitting}
-          disabled={!paymentMethod || submitting}
+          disabled={!paymentMethod || submitting || locating}
           onClick={handleConfirm}
         >
           Confirm Booking

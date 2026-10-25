@@ -10,6 +10,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import AppButton from '../../components/AppButton';
+import StatusBadge from '../../components/StatusBadge';
 import colors from '../../theme/colors';
 import spacing from '../../theme/spacing';
 import typography from '../../theme/typography';
@@ -31,6 +32,13 @@ export default function BookingSuccessScreen({ route, navigation }) {
   const booking = route.params?.booking || {};
   const vehicle = booking.vehicleId || booking.vehicle || {};
   const service = booking.serviceId || booking.service || {};
+  const partner = booking.partnerId && typeof booking.partnerId === 'object'
+    ? booking.partnerId
+    : null;
+  const heading = partner ? 'Partner Assigned!' : 'Booking Request Received';
+  const subtitle = partner
+    ? 'Your wash is scheduled. Your assigned partner will be there soon.'
+    : 'We are finding a nearby partner and will update your booking when one is assigned.';
 
   const scaleAnim = useRef(new Animated.Value(0)).current;
   const [countdown, setCountdown] = useState(10);
@@ -99,8 +107,9 @@ export default function BookingSuccessScreen({ route, navigation }) {
           <Ionicons name="checkmark-circle" size={80} color={colors.success} />
         </Animated.View>
 
-        <Text style={styles.heading}>Booking Confirmed!</Text>
-        <Text style={styles.subtitle}>Your wash has been scheduled. We'll see you soon!</Text>
+        <Text style={styles.heading}>{heading}</Text>
+        <Text style={styles.subtitle}>{subtitle}</Text>
+        {booking.status ? <StatusBadge status={booking.status} /> : null}
 
         {/* Booking reference */}
         {booking.bookingReference ? (
@@ -130,6 +139,17 @@ export default function BookingSuccessScreen({ route, navigation }) {
           ) : null}
           {booking.startAt ? (
             <DetailRow label="Appointment" value={formatDateTime(booking.startAt)} />
+          ) : null}
+          {booking.customerLocation?.address ? (
+            <DetailRow label="Service address" value={booking.customerLocation.address} />
+          ) : null}
+          {partner?.name ? <DetailRow label="Partner" value={partner.name} /> : null}
+          {partner?.phone ? <DetailRow label="Partner phone" value={partner.phone} /> : null}
+          {booking.partnerDistanceKm != null ? (
+            <DetailRow
+              label="Partner distance"
+              value={`${Number(booking.partnerDistanceKm).toFixed(2)} km`}
+            />
           ) : null}
           {booking.priceAtBooking != null ? (
             <DetailRow label="Amount" value={`₹${booking.priceAtBooking}`} isHighlight />

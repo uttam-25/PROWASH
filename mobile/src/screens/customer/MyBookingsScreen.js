@@ -24,6 +24,8 @@ const STATUS_FILTERS = [
   { label: 'Upcoming', value: 'upcoming' },
   { label: 'Pending', value: BOOKING_STATUS.PENDING },
   { label: 'Confirmed', value: BOOKING_STATUS.CONFIRMED },
+  { label: 'Partner Assigned', value: BOOKING_STATUS.PARTNER_ASSIGNED },
+  { label: 'Partner Accepted', value: BOOKING_STATUS.PARTNER_ACCEPTED },
   { label: 'In Progress', value: BOOKING_STATUS.IN_PROGRESS },
   { label: 'Completed', value: BOOKING_STATUS.COMPLETED },
   { label: 'Cancelled', value: BOOKING_STATUS.CANCELLED },
@@ -74,7 +76,7 @@ export default function MyBookingsScreen({ navigation }) {
     if (activeFilter === 'upcoming') {
       return allBookings.filter(
         (b) =>
-          ['pending', 'confirmed', 'in_progress'].includes(b.status) &&
+          ['pending', 'confirmed', 'searching_partner', 'partner_assigned', 'partner_accepted', 'partner_on_way', 'partner_arrived', 'in_progress'].includes(b.status) &&
           new Date(b.startAt) >= now
       );
     }

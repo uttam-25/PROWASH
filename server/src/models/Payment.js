@@ -8,6 +8,12 @@ const paymentSchema = new mongoose.Schema(
       required: [true, 'Booking is required'],
       unique: true,
     },
+    // Kept in sync for databases that still have the legacy unique `booking` index.
+    booking: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Booking',
+      select: false,
+    },
     customerId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',

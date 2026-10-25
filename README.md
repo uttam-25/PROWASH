@@ -50,7 +50,19 @@ npm run dev             # starts on http://localhost:5000
 
 Verify: `curl http://localhost:5000/api/health` → `{"status":"ok",...}`
 
-### 2. Mobile Setup
+### 2. Web Setup
+
+In a second PowerShell window:
+
+```powershell
+Set-Location C:\path\to\PROWASH\web
+npm install
+npm run dev
+```
+
+Open `http://localhost:3000`. The Vite development server proxies `/api` requests to the backend on port 5000. Browser location detection is available on localhost and HTTPS origins.
+
+### 3. Mobile Setup
 
 ```bash
 cd mobile
@@ -62,7 +74,7 @@ npx expo start          # opens Expo Dev Tools
 
 Press `a` for Android emulator, `i` for iOS simulator, or scan the QR with Expo Go.
 
-### 3. API URL Configuration
+### 4. API URL Configuration
 
 The mobile app reads `API_URL` from `mobile/.env`.
 
@@ -76,6 +88,14 @@ The mobile app reads `API_URL` from `mobile/.env`.
 **Finding your LAN IP:**
 - Windows: `ipconfig` → look for `IPv4 Address` under your Wi-Fi adapter
 - macOS/Linux: `ifconfig` or `ip addr` → look for `inet` on the `en0`/`wlan0` interface
+
+---
+
+## Booking and Partner Matching
+
+Customers enter a structured service address (building, street, area, city, state and PIN code) during web booking. Browser location is requested only after the customer clicks **Use my current location**. The server uses OpenStreetMap Nominatim for reverse geocoding and to resolve manual addresses for nearby matching; no API key is required. If geocoding is temporarily unavailable, the booking and address are still saved, but nearby partner matching remains pending until valid coordinates are available. Set the optional `GEOCODING_USER_AGENT` and `GEOCODING_EMAIL` server environment variables to identify the application to the provider.
+
+Only verified partners with a saved service location can go online. Configure supported vehicle types and washing services in the partner profile. New bookings are assigned to the nearest compatible online partner within 2 km when that partner has no overlapping assignment. If no partner is available, the booking remains pending and is retried when a partner comes online or completes/cancels a job.
 
 ---
 
@@ -97,6 +117,8 @@ The mobile app reads `API_URL` from `mobile/.env`.
 | `EMAIL_PORT` | SMTP port | `587` |
 | `EMAIL_USER` | SMTP username | `user@mailtrap.io` |
 | `EMAIL_PASS` | SMTP password | `your_smtp_password` |
+| `GEOCODING_USER_AGENT` | Descriptive identity for OpenStreetMap Nominatim | `PROWASH/1.0` |
+| `GEOCODING_EMAIL` | Optional contact email sent with Nominatim requests | `support@prowash.com` |
 | `RAZORPAY_KEY_ID` | Razorpay public API key | `rzp_test_xxxx` |
 | `RAZORPAY_KEY_SECRET` | Razorpay secret API key | `your_key_secret` |
 | `RAZORPAY_WEBHOOK_SECRET` | Razorpay webhook signing secret | `your_webhook_secret` |

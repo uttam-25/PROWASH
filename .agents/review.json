@@ -1,0 +1,34 @@
+{
+  "verdict": "CHANGES_REQUESTED",
+  "findings": [
+    {
+      "id": 1,
+      "label": "Silent no-partner fallback",
+      "description": "When lat/lng are blank, tryAssignPartner returns null silently. The booking is created with status 'pending' and no partner but the customer success screen gives no indication. Either surface a message or make lat/lng required.",
+      "severity": "blocking",
+      "confidence": "confirmed"
+    },
+    {
+      "id": 2,
+      "label": "Confirm button not disabled on missing address",
+      "description": "handleConfirm guards with an early return and shows addressError, but the button disabled condition only checks !paymentMethod || submitting. Add !serviceAddress.trim() to the disabled prop.",
+      "severity": "minor",
+      "confidence": "confirmed"
+    },
+    {
+      "id": 3,
+      "label": "Late-timestamp slot injection — startAt not snapped",
+      "description": "The 60-second tolerance accepts a client startAt up to 59s past a slot boundary, but the unsnapped client value is stored in MongoDB. Downstream conflict checks that assume startAt is on a canonical boundary will drift. Snap startAt to slotMatch.startAt after the match.",
+      "severity": "blocking",
+      "confidence": "confirmed"
+    },
+    {
+      "id": 4,
+      "label": "TOCTOU window in per-partner conflict check",
+      "description": "Two concurrent assignment calls for different bookings at the same slot both read conflict=0 before either commits, allowing the same partner to be double-booked. The findOneAndUpdate atomic guard only prevents the same booking being assigned twice, not the same partner receiving two overlapping bookings.",
+      "severity": "major",
+      "confidence": "likely"
+    }
+  ],
+  "reviewDoc": "c:\\Users\\Dell\\Desktop\\PROWASH\\.agents\\review.md"
+}

@@ -80,6 +80,11 @@ function getNext14Days() {
 const STATUS_COLORS = {
   pending: colors.warning,
   confirmed: colors.ocean,
+  searching_partner: colors.warning,
+  partner_assigned: colors.ocean,
+  partner_accepted: colors.ocean,
+  partner_on_way: colors.ocean,
+  partner_arrived: colors.aqua,
   in_progress: colors.aqua,
   completed: colors.success,
   cancelled: colors.error,
@@ -101,7 +106,13 @@ function DetailRow({ icon, label, value }) {
   );
 }
 
-const CANCELLABLE_STATUSES = [BOOKING_STATUS.PENDING, BOOKING_STATUS.CONFIRMED];
+const CANCELLABLE_STATUSES = [
+  BOOKING_STATUS.PENDING,
+  BOOKING_STATUS.CONFIRMED,
+  BOOKING_STATUS.SEARCHING_PARTNER,
+  BOOKING_STATUS.PARTNER_ASSIGNED,
+];
+const RESCHEDULABLE_STATUSES = [BOOKING_STATUS.PENDING, BOOKING_STATUS.CONFIRMED];
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
@@ -219,7 +230,7 @@ export default function BookingDetailsScreen({ route, navigation }) {
   if (!booking) return null;
 
   const canCancel = CANCELLABLE_STATUSES.includes(booking.status);
-  const canReschedule = CANCELLABLE_STATUSES.includes(booking.status);
+  const canReschedule = RESCHEDULABLE_STATUSES.includes(booking.status);
 
   const service = booking.serviceId || booking.service || {};
   const vehicle = booking.vehicleId || booking.vehicle || {};
@@ -291,6 +302,30 @@ export default function BookingDetailsScreen({ route, navigation }) {
           <View style={styles.rowDivider} />
           <DetailRow icon="checkmark-circle-outline" label="Status" value={booking.paymentStatus || '—'} />
         </View>
+
+        {booking.customerLocation?.address ? (
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Service Address</Text>
+            <DetailRow icon="location-outline" label="Address" value={booking.customerLocation.address} />
+          </View>
+        ) : null}
+
+        {booking.partnerId?.name ? (
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Assigned Partner</Text>
+            <DetailRow icon="person-outline" label="Name" value={booking.partnerId.name} />
+            {booking.partnerId.phone ? (
+              <DetailRow icon="call-outline" label="Phone" value={booking.partnerId.phone} />
+            ) : null}
+            {booking.partnerDistanceKm != null ? (
+              <DetailRow
+                icon="navigate-outline"
+                label="Distance"
+                value={`${Number(booking.partnerDistanceKm).toFixed(2)} km`}
+              />
+            ) : null}
+          </View>
+        ) : null}
 
         {/* Notes */}
         {booking.notes ? (

@@ -36,11 +36,11 @@ const scheduleSchema = new mongoose.Schema(
     },
     openingTime: {
       type: String,
-      default: '09:00',
+      default: '08:00',
     },
     closingTime: {
       type: String,
-      default: '19:00',
+      default: '20:00',
     },
     slotIntervalMinutes: {
       type: Number,
@@ -62,6 +62,8 @@ const scheduleSchema = new mongoose.Schema(
       type: [holidaySchema],
       default: [],
     },
+    bookingLockId: { type: String, default: null, select: false },
+    bookingLockUntil: { type: Date, default: null, select: false },
     isActive: {
       type: Boolean,
       default: true,

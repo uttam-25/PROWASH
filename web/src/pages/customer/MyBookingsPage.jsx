@@ -16,6 +16,8 @@ const TAB_LIST = [
   { label: 'Upcoming', value: 'upcoming' },
   { label: 'Pending', value: 'pending' },
   { label: 'Confirmed', value: 'confirmed' },
+  { label: 'Partner Assigned', value: 'partner_assigned' },
+  { label: 'Partner Accepted', value: 'partner_accepted' },
   { label: 'In Progress', value: 'in_progress' },
   { label: 'Completed', value: 'completed' },
   { label: 'Cancelled', value: 'cancelled' },
@@ -45,6 +47,10 @@ export default function MyBookingsPage() {
   }
 
   useEffect(() => { fetchBookings(activeTab) }, [activeTab])
+  useEffect(() => {
+    const interval = setInterval(() => fetchBookings(activeTab), 30000)
+    return () => clearInterval(interval)
+  }, [activeTab])
 
   async function handleCancel() {
     setCancelling(true)
@@ -93,9 +99,11 @@ export default function MyBookingsPage() {
                 <th className="pb-3 pr-4 font-medium">Reference</th>
                 <th className="pb-3 pr-4 font-medium">Vehicle</th>
                 <th className="pb-3 pr-4 font-medium">Service</th>
+                <th className="pb-3 pr-4 font-medium">Service Address</th>
                 <th className="pb-3 pr-4 font-medium">Date</th>
                 <th className="pb-3 pr-4 font-medium">Price</th>
                 <th className="pb-3 pr-4 font-medium">Status</th>
+                <th className="pb-3 pr-4 font-medium">Partner</th>
                 <th className="pb-3 pr-4 font-medium">Payment</th>
                 <th className="pb-3 font-medium">Actions</th>
               </tr>
@@ -107,10 +115,18 @@ export default function MyBookingsPage() {
                     {b.bookingReference || b._id?.slice(-8).toUpperCase()}
                   </td>
                   <td className="py-3 pr-4 whitespace-nowrap">
-                    <p className="font-medium text-gray-800">{b.vehicle?.registrationNumber || '—'}</p>
-                    <p className="text-xs text-gray-500">{b.vehicle?.vehicleType}</p>
+                    <p className="font-medium text-gray-800">{b.vehicleId?.licensePlate || '—'}</p>
+                    <p className="text-xs text-gray-500">{b.vehicleId?.type} {b.vehicleId?.make} {b.vehicleId?.model}</p>
                   </td>
-                  <td className="py-3 pr-4 text-gray-700">{b.service?.name || '—'}</td>
+                  <td className="py-3 pr-4 text-gray-700">{b.serviceId?.name || b.serviceNameSnapshot || '—'}</td>
+                  <td className="py-3 pr-4 text-gray-700 min-w-56">
+                    <p>{b.customerLocation?.address || '—'}</p>
+                    {b.locationMatchStatus === 'location_required' && (
+                      <p className="mt-1 text-xs text-amber-700">
+                        Nearby matching needs a valid location.
+                      </p>
+                    )}
+                  </td>
                   <td className="py-3 pr-4 text-gray-500 whitespace-nowrap">
                     {b.startAt ? format(parseISO(b.startAt), 'dd MMM yyyy, hh:mm a') : '—'}
                   </td>
@@ -119,6 +135,17 @@ export default function MyBookingsPage() {
                   </td>
                   <td className="py-3 pr-4">
                     <Badge status={b.status} />
+                  </td>
+                  <td className="py-3 pr-4">
+                    {b.partnerId?.name ? (
+                      <div>
+                        <p className="font-medium text-gray-800">{b.partnerId.name}</p>
+                        {b.partnerId.phone && <p className="text-xs text-gray-500">{b.partnerId.phone}</p>}
+                        {b.partnerDistanceKm != null && (
+                          <p className="text-xs text-gray-500">{Number(b.partnerDistanceKm).toFixed(2)} km away</p>
+                        )}
+                      </div>
+                    ) : <span className="text-gray-400">Pending assignment</span>}
                   </td>
                   <td className="py-3 pr-4">
                     <Badge status={b.paymentStatus} label={b.paymentMethod} />

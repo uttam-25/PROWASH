@@ -25,7 +25,7 @@ export default function PartnerDashboardPage() {
       const [profileRes, requestsRes, jobsRes] = await Promise.all([
         partnerAPI.getProfile(),
         partnerAPI.getNearbyRequests(),
-        partnerAPI.getJobs({ status: 'partner_assigned,partner_on_way,partner_arrived,in_progress' }),
+        partnerAPI.getJobs({ status: 'partner_assigned,partner_accepted,partner_on_way,partner_arrived,in_progress' }),
       ])
       setProfile(profileRes.data.data.profile)
       setRequests(requestsRes.data.data.requests || [])
@@ -40,7 +40,7 @@ export default function PartnerDashboardPage() {
   async function handleToggleAvailability() {
     setToggling(true)
     try {
-      const res = await partnerAPI.toggleAvailability()
+      const res = await partnerAPI.toggleAvailability({ isAvailable: !profile?.isAvailable })
       setProfile(res.data.data.profile)
       toast.success(res.data.data.profile.isAvailable ? 'You are now available' : 'You are now unavailable')
     } catch (err) {
@@ -85,9 +85,10 @@ export default function PartnerDashboardPage() {
         socket.emit('join:partners')
       }
       socket.on('new:request', () => {
-        partnerAPI.getNearbyRequests()
-          .then((res) => setRequests(res.data.data.requests || []))
-          .catch(() => {})
+        loadData()
+      })
+      socket.on('job:assigned', () => {
+        loadData()
       })
     }).catch(() => {})
 
@@ -101,9 +102,7 @@ export default function PartnerDashboardPage() {
   // Auto-refresh requests every 30 seconds
   useEffect(() => {
     const interval = setInterval(() => {
-      partnerAPI.getNearbyRequests()
-        .then(res => setRequests(res.data.data.requests || []))
-        .catch(() => {})
+      loadData()
     }, 30000)
     return () => clearInterval(interval)
   }, [])
@@ -199,13 +198,13 @@ export default function PartnerDashboardPage() {
         </div>
       )}
 
-      {/* Active Job */}
+      {/* Current Bookings */}
       {activeJobs.length > 0 && (
         <div>
-          <h2 className="text-lg font-semibold text-gray-800 mb-3">Active Job</h2>
-          <div className="card p-5 border-l-4 border-[#147DAB]">
-            {activeJobs.slice(0, 1).map((job) => (
-              <div key={job._id} className="flex items-start justify-between gap-4">
+          <h2 className="text-lg font-semibold text-gray-800 mb-3">Current Bookings</h2>
+          <div className="space-y-3">
+            {activeJobs.map((job) => (
+              <div key={job._id} className="card p-5 border-l-4 border-[#147DAB] flex items-start justify-between gap-4">
                 <div className="space-y-1">
                   <p className="font-semibold text-gray-800">
                     {job.serviceId?.name || job.serviceNameSnapshot}
@@ -262,6 +261,11 @@ export default function PartnerDashboardPage() {
                     {req.vehicleId?.type || ''} · {req.vehicleId?.make} {req.vehicleId?.model}
                     {req.vehicleId?.licensePlate ? ` · ${req.vehicleId.licensePlate}` : ''}
                   </p>
+                    {req.partnerDistanceKm != null && (
+                      <p className="text-xs font-medium text-[#147DAB]">
+                        {Number(req.partnerDistanceKm).toFixed(2)} km from your location
+                      </p>
+                    )}
                   {req.customerId?.name && (
                     <p className="text-sm text-gray-500">Customer: {req.customerId.name}</p>
                   )}
@@ -290,7 +294,7 @@ export default function PartnerDashboardPage() {
                     variant="outline"
                     onClick={() => handleReject(req._id)}
                   >
-                    Skip
+                    Reject
                   </Button>
                 </div>
               </div>

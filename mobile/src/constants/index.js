@@ -11,6 +11,11 @@ export const ROLES = {
 export const BOOKING_STATUS = {
   PENDING: 'pending',
   CONFIRMED: 'confirmed',
+  SEARCHING_PARTNER: 'searching_partner',
+  PARTNER_ASSIGNED: 'partner_assigned',
+  PARTNER_ACCEPTED: 'partner_accepted',
+  PARTNER_ON_WAY: 'partner_on_way',
+  PARTNER_ARRIVED: 'partner_arrived',
   IN_PROGRESS: 'in_progress',
   COMPLETED: 'completed',
   CANCELLED: 'cancelled',

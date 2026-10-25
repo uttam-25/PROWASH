@@ -1,0 +1,31 @@
+{
+  "verdict": "CHANGES_REQUESTED",
+  "findings": [
+    {
+      "severity": "MEDIUM",
+      "file": "server/src/controllers/vehicleController.js",
+      "description": "addVehicle uses findOne + create without a transaction or unique index on (owner, isActive). Concurrent requests from the same customer can both pass the findOne check and produce duplicate active vehicle documents. Fix: wrap in a session matching the pattern in replaceVehicle, or add a partial unique index on owner where isActive=true."
+    },
+    {
+      "severity": "MEDIUM",
+      "file": "server/src/controllers/paymentController.js",
+      "description": "confirmUPIPayment uses findOne then conditional create/save without a session. The unique: true constraint on Payment.bookingId turns a concurrent race into an unhandled E11000 500 error rather than a clean 409. Fix: use findOneAndUpdate with upsert, or wrap the block in a transaction."
+    },
+    {
+      "severity": "MEDIUM",
+      "file": "server/src/controllers/paymentController.js",
+      "description": "verifyUPIPayment and rejectUPIPayment do not call any notification service after updating payment status. Customers are left waiting with no push or email feedback. The Razorpay path calls notifyPaymentConfirmed in both webhook and client-side verify handlers — the UPI path should do the same."
+    },
+    {
+      "severity": "LOW",
+      "file": "web/src/pages/customer/QRPaymentPage.jsx",
+      "description": "paymentsAPI.confirmUPI is called with an empty upiRef string unconditionally. There is no input for the customer to enter their UPI transaction reference (UTR). Without it, admins have no cross-reference when reviewing or rejecting a payment claim. Add an optional transaction ID input before the confirm step."
+    },
+    {
+      "severity": "LOW",
+      "file": "N/A",
+      "description": "Build evidence missing — no build output or test run results were found. Review is based on static analysis only."
+    }
+  ],
+  "reviewDoc": "c:\\Users\\Dell\\Desktop\\PROWASH\\.agents\\tasks\\review.md"
+}

@@ -1,8 +1,8 @@
-# PROWASH Phase 1 — Partner Portal, Socket.IO, and Admin Partner Management
+# Partner portal, Socket.IO real-time, and PWA scaffolding — re-review pass
 
-This phase introduces the cleaning-partner role end-to-end: partner registration and login, a partner portal (dashboard, jobs, profile), Socket.IO for real-time booking events, and admin screens to list, verify, and deactivate partners. The backend adds `PartnerProfile`, `Review`, partner routes, and extends `Booking` with partner-tracking fields and a rich status machine.
+This is a second-pass review. The prior review (phase7-review.md v1) raised 9 issues; all 9 are confirmed fixed. Two new issues surface in this pass, both introduced by Phase 7 code: a services API response-shape mismatch that makes the service list empty in `BookingWizard`, and a cancel flow that always returns a 400 because the client never sends the required reason body.
 
-**Watch for:** Admin dashboard stat cards are all broken due to a response-shape mismatch (confirmed, HIGH). There is no dedicated `GET /partner/jobs/:id` route, so `PartnerJobPage` fetches the entire job list and scans it client-side (confirmed, MEDIUM). Photo uploads save `blob:` object URLs instead of real storage URLs, so they are ephemeral and non-reproducible (confirmed, MEDIUM). Partner registration response wraps data inconsistently relative to the rest of the API (confirmed, LOW).
+**Watch for:** `BookingWizard` step 3 is broken — `getServices` returns `{ data: [...] }` but the wizard reads `data.services`, so the list is always empty and the user is stuck (confirmed). The cancel-booking API sends no body, so the server's required-reason check always fires (confirmed).
 
 **Verdict**: NEEDS_CHANGES
 
@@ -10,40 +10,20 @@ This phase introduces the cleaning-partner role end-to-end: partner registration
 
 ## High-level view
 
-The authorization stack is correct at every layer. `requirePartner` follows `protect` on all partner-only routes, admin routes use `requireAdmin`, and `ProtectedRoute` in the web layer redirects mismatched roles before rendering. The atomic accept-request using `findOneAndUpdate` with a compound filter on `{ _id, status: 'searching_partner', partnerId: null }` is the right pattern and correctly returns 409 when the race is lost.
+All 9 findings from the prior pass are addressed. The dispatch gap is closed: `getNearbyRequests` now includes `pending` alongside `searching_partner`, so normal bookings are visible to partners. The socket payload field mismatch is corrected; `booking:assigned` reads `data.partnerName` and the polling fallback guards on `typeof === 'object'` before setting partner info. The `partners` room role guard, the `rejectRequest` verification check, the PWA icons, service worker, dev proxy, status history timestamps, and price snapshot display are all confirmed fixed.
 
-The admin dashboard is broken out of the box. `getDashboard` returns a flat object directly under `data`, but the page reads `dashboard.stats.*` — a nested key that does not exist. Every stat card shows `—`. Additionally, `getDashboard` does not return `confirmedBookings`, `inProgressBookings`, or `completedToday`; those only exist in the `getReports` response. The page calls both endpoints but maps the wrong keys from the wrong source.
+Two new correctness defects are in scope. `getServices` has always returned `{ success, data: [...] }` — the array directly under `data` — but `BookingWizard` (introduced in this phase) reads `res.data.data.services`, which is `undefined` on that shape, so the fallback `|| []` fires every time. Step 3 of the wizard always shows "No services available". `ServicesPage` and `DashboardPage` have the same mismatch but were pre-existing and are out of scope.
 
-The partner job detail page (`PartnerJobPage`) has no single-job GET route to call. It loads all of the partner's jobs, searches the array by `_id`, and renders the match. As the partner's job history grows, this wastes bandwidth and becomes fragile. Adding `GET /partner/jobs/:bookingId` to the route table and a matching controller function is a one-hour fix that should happen before shipping.
-
-Photo upload in `PartnerJobPage` calls `URL.createObjectURL()` on the selected file and immediately sends those blob URLs to the backend, which saves them as strings in MongoDB. Blob URLs are tab-scoped and revoked when the tab closes, so the stored values become dead references on the first page reload. A real upload path (cloud storage or a local multer endpoint) is needed before the photo feature is usable.
-
-The `axios` response interceptor converts all API errors to `new Error(message)`, which means every `catch(err)` block only needs `err.message` — not the old `err.response?.data?.message` chain. All new pages (partner portal, admin partner screens) use `err.message` correctly. The previously broken pages (`MyBookingsPage`, `BookingDetailPage`, `ServicesPage`, `AdminDashboardPage`) were also updated and now use `err.message`.
-
-The vehicle response fix — `vRes.data.data?.vehicles || vRes.data.data` — is applied in both `DashboardPage` and `BookingWizard`, handling the case where `data` is the array directly.
-
-The admin status-transition table skips `confirmed → searching_partner`. An admin can move a non-immediate booking from `confirmed` straight to `in_progress`, bypassing the partner-assignment step. That may be intentional for manual dispatch, but it means a completed booking could have `partnerId: null`, causing a null-dereference in `updateJobStatus` earnings accounting (`PartnerProfile.findOneAndUpdate({ userId: req.user._id }, ...)` targets the partner's own ID, so the partner-side path is safe, but the admin-initiated jump is a logical gap to document or guard).
-
-The `AdminDashboardPage` also reads `dashboard.recentBookings` from `getDashboard`, but that field is not in the dashboard response — `recentBookings` is only in `getReports`. The recent-bookings table will always be empty on the admin dashboard regardless of data in the database.
+The cancel booking flow is also broken end-to-end. The `bookingsAPI.cancelBooking` client introduced in Phase 7 makes a PATCH with no request body. The server's `cancelBooking` handler requires a non-empty `reason` field and returns a 400 `AppError` when absent. Both `MyBookingsPage` and `BookingDetailPage` call `cancelBooking(id)` with no second argument, so the "Cancel" button always fails silently (the error is caught and toasted, booking remains active).
 
 ---
 
 <details>
-<summary>Issues (7)</summary>
+<summary>Issues (2)</summary>
 
-1. **Admin dashboard stat cards always show `—`** — `getDashboard` returns a flat object under `data` but the page reads `dashboard?.stats`. All eight stat cards will be `—`. Fix: either remove the `?.stats` indirection (`const stats = dashboard || {}`) or move the fields into a `stats` subkey on the server response.
+1. **Services always empty in BookingWizard** — `getServices` returns `{ data: Array }` but `BookingWizard.fetchServices` reads `res.data.data.services`, which is `undefined`, so the list always falls back to `[]` and step 3 shows "No services available". Fix: change the read to `res.data.data?.services || res.data.data || []` (matching the vehicles pattern already in the wizard), or wrap the server response: `res.json({ success: true, data: { services } })`.
 
-2. **Admin dashboard stats use wrong keys** — The page references `stats.todayBookings`, `stats.confirmedBookings`, `stats.inProgressBookings`, and `stats.completedToday`, none of which exist in `getDashboard`. `todayAppointments` is the server key; the other three only exist in `getReports`. Fix: align key names, or derive the missing breakdowns from `getReports` which already fetches them.
-
-3. **Admin dashboard recent bookings always empty** — `dashboard?.recentBookings` is referenced but `getDashboard` does not include that field; `recentBookings` is under `getReports`. The table renders nothing. Fix: read `reports.recentBookings` instead.
-
-4. **No `GET /partner/jobs/:id` endpoint** — `PartnerJobPage` fetches all jobs and scans the array to find the requested ID. Fix: add `router.get('/jobs/:bookingId', protect, requirePartner, getJobById)` and a matching controller that queries `Booking.findOne({ _id: bookingId, partnerId: req.user._id })`.
-
-5. **Photo upload stores ephemeral blob URLs** — `URL.createObjectURL()` produces a tab-scoped reference that is invalidated on page close. The URLs are sent to the backend and persisted in MongoDB. Every stored photo reference becomes a dead link after the session. Fix: implement a real upload endpoint (multer + disk/S3) or a base64 path before enabling this feature.
-
-6. **Admin status transition skips partner assignment** — `ALLOWED_TRANSITIONS` allows `confirmed → in_progress` directly, so an admin can complete a booking that has `partnerId: null`. The partner-side earnings update path is not affected, but downstream reads of `partnerId` on a completed booking return null. Fix: document this as a manual-dispatch path or add a guard that requires a partnerId for `in_progress` transitions.
-
-7. **Partner registration response shape inconsistency** — `registerPartner` returns `{ success, token, user, data: { profile } }` while every other endpoint uses `{ success, data: { ... } }`. The token and user are at root level here but wrapped in `data` elsewhere. `PartnerRegisterPage` reads `res.data.token` and `res.data.user` so it works, but it is the only route in the codebase that breaks the contract. Fix: emit `{ success: true, token, data: { user: safeUser, profile } }` to match the auth pattern.
+2. **Cancel booking always fails with 400** — `bookingsAPI.cancelBooking(id)` sends no body; `bookingController.cancelBooking` requires a non-empty `reason` and returns `AppError('A cancellation reason is required', 400)`. Both `MyBookingsPage` and `BookingDetailPage` hit this path. Fix: add a `reason` parameter to `bookingsAPI.cancelBooking` and collect it in the `ConfirmDialog`, or make the reason optional on the server for customer-initiated cancels.
 
 </details>
 
@@ -52,57 +32,57 @@ The `AdminDashboardPage` also reads `dashboard.recentBookings` from `getDashboar
 <details>
 <summary>Details</summary>
 
-### Status machine and admin transition gap
+### Services always empty in BookingWizard step 3
 
-Partner-side transitions are constrained by `PARTNER_TRANSITIONS`: `partner_assigned → partner_on_way → partner_arrived → in_progress → completed`. Any attempt to jump steps returns a 400 with the valid transitions listed.
+`serviceController.getServices` calls `res.json({ success: true, data: services })` where `services` is a Mongoose array. So `res.data.data` on the client is the array itself, not an object with a `.services` key. `BookingWizard.fetchServices` reads:
 
-The admin-side table allows `confirmed → in_progress` directly, skipping partner assignment. The `searching_partner → partner_assigned` admin edge exists, so an admin can advance a booking that is already searching. The missing edge is `confirmed → searching_partner`, which would allow an admin to initiate partner-dispatch for a non-immediate booking without jumping straight to `in_progress`. The admin can also move `confirmed` to `in_progress` with `partnerId: null` on the booking — downstream reads of `partnerId` on that completed booking will return null.
-
-### Admin dashboard response shape mismatch
-
-`getDashboard` (confirmed from source):
 ```js
-res.json({
-  success: true,
-  data: {
-    totalBookings, pendingBookings, todayAppointments,
-    totalRevenue, activeServices, totalCustomers,
-  },
-});
+const list = res.data.data.services || []
 ```
 
-`AdminDashboardPage` reads:
+`res.data.data.services` is `undefined` on an array, so `list` is always `[]`. Step 3 renders the `EmptyState` component every time regardless of what the server returns. The URL-param pre-selection of a service (`preselectedServiceId`) is also dead for the same reason — `list` is always empty so `list.find(...)` never matches.
+
+`ServicesPage` and `DashboardPage` have the identical read but were present before Phase 7 and are out of scope here. A server-side shape change to `{ data: { services } }` would fix all callers at once.
+
+### Cancel booking returns 400 for every customer cancel attempt
+
+`bookingController.cancelBooking` (pre-existing, unchanged in Phase 7):
+
 ```js
-const stats = dashboard?.stats || {}   // dashboard.stats is undefined → {}
-// All stat cards read stats.todayBookings, stats.confirmedBookings, etc.
-// → all resolve to undefined → render '—'
+const reason = (req.body.reason || req.body.cancellationReason || '').trim();
+if (!reason) {
+  return next(new AppError('A cancellation reason is required', 400));
+}
 ```
 
-And `dashboard?.recentBookings` — also absent from `getDashboard`; it lives in `getReports` which is already fetched into `reports`. The table only needs to read `reports.recentBookings`.
+The Phase 7 `bookings.js` API client:
 
-### Missing `GET /partner/jobs/:id` route
-
-`PartnerJobPage` calls `partnerAPI.getJobs()` (no filter) then does `jobs.find(j => j._id === id)`. As the partner completes more jobs the payload grows unboundedly. More importantly, there is no guarantee the job in the correct status is included unless the `?status=` filter is not applied — and it isn't here, so this works for now, but the pattern is fragile and the O(n) scan will degrade over time. A dedicated single-job endpoint would also allow populating fields that are not returned in the list response.
-
-### Photo upload lifecycle
-
-`handleUpload` in `PhotoUploadSection`:
 ```js
-const urls = files.map((f) => URL.createObjectURL(f))
-await partnerAPI.uploadPhotos(bookingId, { type, urls })
+cancelBooking: (id) => api.patch(`/bookings/${id}/cancel`),
 ```
 
-`URL.createObjectURL` returns a `blob:http://…` URL local to the browser tab. The backend accepts any array of strings and appends them to `beforePhotos`/`afterPhotos` without validation. After a page refresh or tab close those blob references resolve to nothing. The feature should not be promoted as working until a real upload path is in place.
+No body. `req.body.reason` is `undefined`, trim produces `''`, and the 400 fires. The axios interceptor converts this to `new Error('A cancellation reason is required')`, which the catch blocks toast. The booking stays active. Both `MyBookingsPage` and `BookingDetailPage` use this path.
 
-### Socket.IO integration
+The simplest fix consistent with the server contract: add a `reason` parameter to `bookingsAPI.cancelBooking(id, reason)`, pass it as the request body, and collect it via a text input in the existing `ConfirmDialog`. Alternatively, remove the server-side requirement for customer-initiated cancels (the admin cancel route already doesn't require it separately).
 
-Both callers in `partnerController` wrap the dynamic `socketService` import in a bare `try/catch {}`, so a socket failure cannot bring down the HTTP response. The web layer dynamically imports `socket.io-client` in three places (`BookingWizard`, `PartnerJobPage`, `PartnerDashboardPage`), all with `.catch(() => {})`, so a CSP block or connection refusal degrades silently. A 10-second polling fallback runs in parallel in `BookingWizard`, so the customer sees booking status updates even when the socket cannot connect.
+</details>
 
-`PartnerDashboardPage` listens on both `partner:<id>` and the `partners` broadcast room for `new:request` events. The server currently never emits `new:request` to those rooms — `acceptRequest` only emits `booking:assigned` and `booking:status_update`. Partners see new requests only via the initial page load and the manual refresh triggered by accepting a job. This is a functional gap but not a correctness bug; new request delivery via socket is not yet wired server-side.
+---
 
-### PWA manifest icon risk
+<details>
+<summary>Prior pass resolved issues (for reference)</summary>
 
-`manifest.json` references `/icons/icon-192.png` and `/icons/icon-512.png`. If those files do not exist under `web/public/icons/`, browsers will suppress the PWA install prompt with no visible error.
+All 9 issues from the prior review are confirmed fixed:
+
+1. Dispatch gap — `getNearbyRequests` now queries `status: { $in: ['searching_partner', 'pending'] }`.
+2. Partner name display — wizard reads `data.partnerName`; polling fallback checks `typeof b.partnerId === 'object'`.
+3. `partners` socket room — `join:partners` handler guards on `socket.userRole === 'partner'`.
+4. `rejectRequest` verification — isVerified check added, mirrors accept guard.
+5. PWA icons — 192×192 (9.5 KB) and 512×512 (31 KB) real PNG files present.
+6. Offline page — `sw.js` is a correct minimal SW, registered in `main.jsx`.
+7. Socket.IO dev proxy — `/socket.io` with `ws: true` added to `vite.config.js`.
+8. Status history timestamps — reads `entry.changedAt`; `entry.changedBy?.name` guarded correctly.
+9. Price snapshot — reads `priceAtBooking` with `?? booking.service?.price` fallback.
 
 </details>
 
@@ -111,41 +91,15 @@ Both callers in `partnerController` wrap the dynamic `socketService` import in a
 <details>
 <summary>File map</summary>
 
-| File | What changed |
-|---|---|
-| `server/src/models/User.js` | Added `'partner'` to role enum |
-| `server/src/models/PartnerProfile.js` | New model — partner metadata, location, earnings, documents |
-| `server/src/models/Review.js` | New model — per-booking 1–5 star review |
-| `server/src/models/Booking.js` | Added partner tracking fields, extended status enum, statusHistory schema |
-| `server/src/middleware/auth.js` | Added `requirePartner` middleware |
-| `server/src/controllers/partnerController.js` | New controller — registration, profile, availability, request accept/reject, job status, photos |
-| `server/src/routes/partnerRoutes.js` | New route file mounted at `/api/partner` |
-| `server/src/app.js` | Mounted partner routes |
-| `server/src/services/socketService.js` | New Socket.IO service — room-based emit helpers |
-| `server/src/server.js` | Switched to `http.createServer` + `initSocket` |
-| `server/src/controllers/adminController.js` | Added partner list, detail, verify, deactivate |
-| `server/src/routes/adminRoutes.js` | Added `/admin/partners/*` routes |
-| `server/scripts/seedServices.js` | Expanded service catalogue |
-| `server/package.json` | Added `socket.io` |
-| `web/index.html` | Added PWA meta tags |
-| `web/public/manifest.json` | New PWA web app manifest |
-| `web/public/offline.html` | New offline fallback page |
-| `web/src/App.jsx` | Added partner routes and ProtectedRoute partner handling |
-| `web/src/pages/customer/DashboardPage.jsx` | Rapido-style layout, vehicle response fix |
-| `web/src/pages/customer/BookingWizard.jsx` | Socket.IO + polling real-time status tracking |
-| `web/src/pages/customer/MyBookingsPage.jsx` | `err.message` fix |
-| `web/src/pages/customer/BookingDetailPage.jsx` | `err.message` fix |
-| `web/src/pages/customer/ServicesPage.jsx` | `err.message` fix |
-| `web/src/pages/admin/AdminDashboardPage.jsx` | `err.message` fix (stats mapping remains broken) |
-| `web/src/pages/admin/AdminPartnersPage.jsx` | New — paginated partner list with inline verify action |
-| `web/src/pages/admin/AdminPartnerDetailPage.jsx` | New — partner detail, stats, documents, recent jobs |
-| `web/src/pages/PartnerRegisterPage.jsx` | New partner registration form |
-| `web/src/pages/PartnerLoginPage.jsx` | New partner login with role guard |
-| `web/src/pages/partner/*.jsx` | New partner portal pages (dashboard, jobs list, job detail, profile) |
-| `web/src/components/layout/PartnerLayout.jsx` | New sidebar layout for partner portal |
-| `web/src/api/partner.js` | New API client methods for all partner endpoints |
-| `web/package.json` | Added `socket.io-client` |
+Files relevant to the two new findings:
 
-Full diff: `git diff main` from workspace root.
+- `server/src/controllers/serviceController.js` — `getServices` returns `{ data: Array }` (unchanged); shape mismatch is the root cause of issue 1.
+- `server/src/controllers/bookingController.js` — `cancelBooking` requires non-empty `reason` (unchanged); creates the 400 condition for issue 2.
+- `web/src/pages/customer/BookingWizard.jsx` — new in Phase 7; `fetchServices` reads `.services` on a bare array (issue 1).
+- `web/src/api/bookings.js` — new in Phase 7; `cancelBooking` sends no body (issue 2).
+- `web/src/pages/customer/MyBookingsPage.jsx` — modified in Phase 7; calls `cancelBooking(id)` without reason (issue 2).
+- `web/src/pages/customer/BookingDetailPage.jsx` — modified in Phase 7; calls `cancelBooking(id)` without reason (issue 2).
+
+Full diff: `git diff e7b2fa6 HEAD`
 
 </details>

@@ -127,10 +127,21 @@ export default function QRPaymentPage() {
             onError={() => setQrImageMissing(true)}
           />
         ) : (
-          <div className="w-56 h-56 flex flex-col items-center justify-center border-2 border-dashed border-amber-400 rounded-lg bg-amber-50 p-4 text-center">
-            <AlertTriangle className="w-8 h-8 text-amber-500 mb-2" />
-            <p className="text-xs text-amber-700 font-medium">QR code image not configured.</p>
-            <p className="text-xs text-amber-600 mt-1">Place your QR image at <code className="bg-amber-100 px-1 rounded">web/public/qr-payment.png</code></p>
+          /* Functional fallback when the QR image file has not been placed yet.
+             Customers can still pay by typing the UPI ID manually. */
+          <div className="w-56 flex flex-col items-center gap-3">
+            {/* Visual UPI card so the page is always useful */}
+            <div className="w-56 h-56 flex flex-col items-center justify-center border-2 border-primary rounded-xl bg-blue-50 p-4 text-center">
+              <div className="text-4xl mb-2">💳</div>
+              <p className="text-sm font-bold text-primary">UPI Payment</p>
+              <p className="text-xs text-gray-600 mt-2 break-all font-mono font-medium">{UPI_ID}</p>
+              <p className="text-xs text-gray-500 mt-1">{ACCOUNT_NAME}</p>
+              <p className="text-xs text-gray-400">{BANK_NAME}</p>
+              <p className="text-xs text-primary font-semibold mt-2">₹{Number(amount).toLocaleString('en-IN')}</p>
+            </div>
+            <p className="text-xs text-amber-600 text-center bg-amber-50 rounded p-2 border border-amber-200">
+              ⚠️ To show a scannable QR code, place your image at <code className="font-mono">web/public/qr-payment.png</code>
+            </p>
           </div>
         )}
         <p className="text-sm text-gray-600 text-center">Scan the QR code using your preferred UPI app and complete the payment.</p>

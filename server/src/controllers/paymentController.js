@@ -2,7 +2,7 @@ import crypto from 'crypto';
 import Booking from '../models/Booking.js';
 import Payment from '../models/Payment.js';
 import { AppError } from '../middleware/errorHandler.js';
-import { notifyPaymentConfirmed } from '../services/notificationService.js';
+import { notifyPaymentConfirmed, createNotification } from '../services/notificationService.js';
 
 // ---------------------------------------------------------------------------
 // POST /api/payments/create-order  (protect)
@@ -320,26 +320,38 @@ export const confirmUPIPayment = async (req, res, next) => {
       return next(new AppError('Not authorised for this booking', 403));
     }
 
-    let payment = await Payment.findOne({ bookingId });
+    // Guard: only UPI bookings can use this endpoint
+    if (booking.paymentMethod !== 'upi') {
+      return next(new AppError(
+        `This booking uses ${booking.paymentMethod} payment, not UPI. Use the correct payment flow.`,
+        400
+      ));
+    }
+
+    let payment = await Payment.findOneAndUpdate(
+      // Only update if not already confirmed/paid — atomic check-and-set
+      { bookingId, status: { $nin: ['pending_verification', 'paid'] } },
+      {
+        $set: {
+          bookingId,
+          customerId: req.user._id,
+          amount: booking.priceAtBooking,
+          method: 'upi',
+          status: 'pending_verification',
+          upiConfirmedAt: new Date(),
+          ...(upiRef ? { upiRef } : {}),
+        },
+      },
+      { new: true, upsert: true }
+    );
+
     if (!payment) {
-      payment = await Payment.create({
-        bookingId,
-        customerId: req.user._id,
-        amount: booking.priceAtBooking,
-        method: 'upi',
-        status: 'pending_verification',
-        upiConfirmedAt: new Date(),
-        upiRef: upiRef || undefined,
-      });
-    } else {
-      if (['pending_verification', 'paid'].includes(payment.status)) {
+      // findOneAndUpdate returned null with no upsert — means status was already
+      // pending_verification or paid (the $nin filter excluded it)
+      const existing = await Payment.findOne({ bookingId });
+      if (existing && ['pending_verification', 'paid'].includes(existing.status)) {
         return next(new AppError('Payment confirmation already submitted or payment already verified.', 409));
       }
-      payment.method = 'upi';
-      payment.status = 'pending_verification';
-      payment.upiConfirmedAt = new Date();
-      if (upiRef) payment.upiRef = upiRef;
-      await payment.save();
     }
 
     booking.paymentStatus = 'pending_verification';
@@ -386,6 +398,11 @@ export const verifyUPIPayment = async (req, res, next) => {
     payment.verifiedAt = new Date();
     await payment.save();
     await Booking.findByIdAndUpdate(payment.bookingId, { paymentStatus: 'paid' });
+    // Notify customer — fire-and-forget
+    const booking = await Booking.findById(payment.bookingId).select('bookingReference serviceNameSnapshot customerId');
+    if (booking) {
+      notifyPaymentConfirmed(booking, null).catch(console.error);
+    }
     res.json({ success: true, data: payment });
   } catch (err) { next(err); }
 };
@@ -406,6 +423,14 @@ export const rejectUPIPayment = async (req, res, next) => {
     payment.rejectionReason = req.body.reason || '';
     await payment.save();
     await Booking.findByIdAndUpdate(payment.bookingId, { paymentStatus: 'unpaid' });
+    // Notify customer — fire-and-forget
+    createNotification(
+      payment.customerId,
+      'Payment Not Verified',
+      `Your UPI payment could not be verified. Please retry or contact support. ${payment.rejectionReason ? 'Reason: ' + payment.rejectionReason : ''}`.trim(),
+      'payment',
+      { bookingId: payment.bookingId }
+    ).catch(console.error);
     res.json({ success: true, data: payment });
   } catch (err) { next(err); }
 };

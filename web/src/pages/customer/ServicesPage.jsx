@@ -23,7 +23,7 @@ export default function ServicesPage() {
     try {
       const params = type && type !== 'All' ? { vehicleType: type } : {}
       const res = await servicesAPI.getServices(params)
-      setServices(res.data.data.services || [])
+      setServices(res.data.data.services || res.data.data || [])
       setActiveCategory('All')
     } catch (err) {
       setError(err.message || 'Failed to load services.')
@@ -108,7 +108,7 @@ export default function ServicesPage() {
                   <p className="text-2xl font-bold text-primary">
                     ₹{s.price?.toLocaleString('en-IN')}
                   </p>
-                  <p className="text-xs text-gray-400">{s.durationMinutes} min</p>
+                  <p className="text-xs text-gray-400">{s.duration} min</p>
                 </div>
                 <Button
                   size="sm"

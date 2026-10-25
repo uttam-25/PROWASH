@@ -6,7 +6,10 @@ export const bookingService = {
   getAvailableSlots: (serviceId, date) =>
     api.get(`/availability?serviceId=${serviceId}&date=${date}`).then((r) => r.data),
 
-  createBooking: (data) => api.post('/bookings', data).then((r) => r.data),
+  createBooking: (data, requestId) =>
+    api.post('/bookings', data, {
+      headers: requestId ? { 'Idempotency-Key': requestId } : {},
+    }).then((r) => r.data),
 
   getMyBookings: (params = {}) =>
     api.get('/bookings/my', { params }).then((r) => r.data),

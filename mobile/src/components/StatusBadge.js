@@ -7,6 +7,11 @@ import typography from '../theme/typography';
 const STATUS_COLORS = {
   pending: { bg: colors.warning, text: colors.white },
   confirmed: { bg: colors.ocean, text: colors.white },
+  searching_partner: { bg: colors.warning, text: colors.white },
+  partner_assigned: { bg: colors.ocean, text: colors.white },
+  partner_accepted: { bg: colors.ocean, text: colors.white },
+  partner_on_way: { bg: colors.ocean, text: colors.white },
+  partner_arrived: { bg: colors.aqua, text: colors.midnight },
   in_progress: { bg: colors.aqua, text: colors.midnight },
   completed: { bg: colors.success, text: colors.white },
   cancelled: { bg: colors.error, text: colors.white },

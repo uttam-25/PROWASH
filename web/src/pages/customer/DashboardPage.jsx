@@ -26,13 +26,14 @@ const VEHICLE_CARDS = [
   { type: 'Scooty', icon: Zap,  label: 'Scooty Wash', gradient: 'from-purple-500 to-purple-700' },
 ]
 
-const ACTIVE_STATUSES = ['pending', 'confirmed', 'searching_partner', 'partner_assigned', 'partner_on_way', 'partner_arrived', 'in_progress']
+const ACTIVE_STATUSES = ['pending', 'confirmed', 'searching_partner', 'partner_assigned', 'partner_accepted', 'partner_on_way', 'partner_arrived', 'in_progress']
 
 const LIVE_STATUS_LABELS = {
   pending:           '⏳ Pending',
   confirmed:         '✅ Confirmed',
   searching_partner: '🔍 Finding a Partner...',
   partner_assigned:  '✅ Partner Assigned',
+  partner_accepted:  '🤝 Partner Accepted',
   partner_on_way:    '🚗 Partner on the Way',
   partner_arrived:   '📍 Partner Arrived',
   in_progress:       '🧹 Cleaning in Progress',

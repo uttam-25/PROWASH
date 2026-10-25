@@ -18,19 +18,17 @@ const VEHICLE_TYPE_OPTIONS = [
 ]
 
 const CATEGORY_OPTIONS = [
-  { value: 'Exterior Wash', label: 'Exterior Wash' },
-  { value: 'Interior Cleaning', label: 'Interior Cleaning' },
-  { value: 'Interior + Exterior', label: 'Interior + Exterior' },
-  { value: 'Premium Detailing', label: 'Premium Detailing' },
-  { value: 'Deep Cleaning', label: 'Deep Cleaning' },
-  { value: 'Add-on', label: 'Add-on' },
+  { value: 'exterior', label: 'Exterior Wash' },
+  { value: 'interior', label: 'Interior Cleaning' },
+  { value: 'full', label: 'Interior + Exterior (Full)' },
+  { value: 'premium', label: 'Premium Detailing' },
 ]
 
 function ServiceForm({ defaultValues, onSubmit, loading }) {
   const { register, handleSubmit, formState: { errors } } = useForm({
     defaultValues: defaultValues || {
-      name: '', description: '', vehicleType: 'Car', category: 'Exterior Wash',
-      price: '', durationMinutes: '', active: true,
+      name: '', description: '', vehicleType: 'Car', category: 'exterior',
+      price: '', duration: '', isActive: true,
     },
   })
 
@@ -76,15 +74,15 @@ function ServiceForm({ defaultValues, onSubmit, loading }) {
           <label className="block text-sm font-medium text-gray-700">Duration (min) <span className="text-red-500">*</span></label>
           <input
             type="number" min="1"
-            className={`input w-full ${errors.durationMinutes ? 'border-red-400' : ''}`}
-            {...register('durationMinutes', { required: 'Duration is required', min: { value: 1, message: 'Must be ≥ 1' }, valueAsNumber: true })}
+            className={`input w-full ${errors.duration ? 'border-red-400' : ''}`}
+            {...register('duration', { required: 'Duration is required', min: { value: 1, message: 'Must be ≥ 1' }, valueAsNumber: true })}
           />
-          {errors.durationMinutes && <p className="text-red-500 text-xs">{errors.durationMinutes.message}</p>}
+          {errors.duration && <p className="text-red-500 text-xs">{errors.duration.message}</p>}
         </div>
       </div>
 
       <div className="flex items-center gap-2">
-        <input type="checkbox" id="active-check" className="w-4 h-4 accent-primary" {...register('active')} />
+        <input type="checkbox" id="active-check" className="w-4 h-4 accent-primary" {...register('isActive')} />
         <label htmlFor="active-check" className="text-sm text-gray-700">Active</label>
       </div>
 
@@ -111,9 +109,9 @@ export default function AdminServicesPage() {
     setError(null)
     try {
       const res = await adminAPI.getServices()
-      setServices(res.data.data.services || [])
+      setServices(res.data.data.services || res.data.data || [])
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to load services.')
+      setError(err.message || 'Failed to load services.')
     } finally {
       setLoading(false)
     }
@@ -124,7 +122,17 @@ export default function AdminServicesPage() {
   async function handleAdd(data) {
     setSubmitting(true)
     try {
-      await adminAPI.createService(data)
+      // Map form field names to backend field names
+      const payload = {
+        name: data.name,
+        description: data.description,
+        vehicleTypes: [data.vehicleType],
+        category: data.category,
+        price: data.price,
+        duration: data.duration,
+        isActive: data.isActive,
+      }
+      await adminAPI.createService(payload)
       toast.success('Service created.')
       setAddOpen(false)
       fetchServices()
@@ -138,7 +146,16 @@ export default function AdminServicesPage() {
   async function handleEdit(data) {
     setSubmitting(true)
     try {
-      await adminAPI.updateService(editService._id, data)
+      const payload = {
+        name: data.name,
+        description: data.description,
+        vehicleTypes: [data.vehicleType],
+        category: data.category,
+        price: data.price,
+        duration: data.duration,
+        isActive: data.isActive,
+      }
+      await adminAPI.updateService(editService._id, payload)
       toast.success('Service updated.')
       setEditService(null)
       fetchServices()
@@ -166,8 +183,8 @@ export default function AdminServicesPage() {
   async function handleToggleActive(service) {
     setTogglingId(service._id)
     try {
-      await adminAPI.updateService(service._id, { active: !service.active })
-      toast.success(`Service ${!service.active ? 'activated' : 'deactivated'}.`)
+      await adminAPI.updateService(service._id, { isActive: !service.isActive })
+      toast.success(`Service ${!service.isActive ? 'activated' : 'deactivated'}.`)
       fetchServices()
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to update service.')
@@ -222,21 +239,21 @@ export default function AdminServicesPage() {
                   <td className="py-3 px-4 font-semibold text-gray-700">
                     ₹{Number(s.price).toLocaleString('en-IN')}
                   </td>
-                  <td className="py-3 px-4 text-gray-500">{s.durationMinutes} min</td>
+                  <td className="py-3 px-4 text-gray-500">{s.duration} min</td>
                   <td className="py-3 px-4">
                     {/* Toggle Switch */}
                     <button
                       onClick={() => handleToggleActive(s)}
                       disabled={togglingId === s._id}
                       className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${
-                        s.active ? 'bg-primary' : 'bg-gray-300'
+                        s.isActive ? 'bg-primary' : 'bg-gray-300'
                       } ${togglingId === s._id ? 'opacity-50 cursor-wait' : ''}`}
                       role="switch"
-                      aria-checked={s.active}
+                      aria-checked={s.isActive}
                     >
                       <span
                         className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow transition duration-200 ${
-                          s.active ? 'translate-x-5' : 'translate-x-0'
+                          s.isActive ? 'translate-x-5' : 'translate-x-0'
                         }`}
                       />
                     </button>
@@ -278,11 +295,11 @@ export default function AdminServicesPage() {
             defaultValues={{
               name: editService.name,
               description: editService.description || '',
-              vehicleType: editService.vehicleType,
+              vehicleType: Array.isArray(editService.vehicleTypes) ? editService.vehicleTypes[0] : editService.vehicleType || 'Car',
               category: editService.category,
               price: editService.price,
-              durationMinutes: editService.durationMinutes,
-              active: editService.active,
+              duration: editService.duration,
+              isActive: editService.isActive,
             }}
             onSubmit={handleEdit}
             loading={submitting}

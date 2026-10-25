@@ -3,6 +3,7 @@ import User from '../models/User.js';
 import PartnerProfile from '../models/PartnerProfile.js';
 import Booking from '../models/Booking.js';
 import { AppError } from '../middleware/errorHandler.js';
+import { assignPendingBookings, tryAssignPartner, withPartnerAssignmentLock } from '../services/partnerAssignmentService.js';
 
 // Generate JWT — same pattern as authController. Includes `role` so Socket.IO
 // can gate role-scoped rooms (e.g. the `partners` broadcast room).
@@ -15,7 +16,7 @@ function signToken(userId, role) {
 // ---------------------------------------------------------------------------
 export const registerPartner = async (req, res, next) => {
   try {
-    const { name, email, password, phone, serviceCategories } = req.body;
+    const { name, email, password, phone, serviceCategories, supportedServiceIds } = req.body;
 
     if (!name || !email || !password || !phone) {
       return next(new AppError('name, email, password and phone are required', 400));
@@ -33,6 +34,7 @@ export const registerPartner = async (req, res, next) => {
       userId: user._id,
       phone,
       serviceCategories: categories,
+      supportedServiceIds: Array.isArray(supportedServiceIds) ? supportedServiceIds : [],
     });
 
     const token = signToken(user._id, user.role);
@@ -49,7 +51,7 @@ export const registerPartner = async (req, res, next) => {
 // ---------------------------------------------------------------------------
 export const getPartnerProfile = async (req, res, next) => {
   try {
-    const profile = await PartnerProfile.findOne({ userId: req.user._id });
+    const profile = await PartnerProfile.findOne({ userId: req.user._id }).populate('supportedServiceIds', 'name');
     if (!profile) {
       return next(new AppError('Partner profile not found', 404));
     }
@@ -64,19 +66,33 @@ export const getPartnerProfile = async (req, res, next) => {
 // ---------------------------------------------------------------------------
 export const updatePartnerProfile = async (req, res, next) => {
   try {
-    const allowed = ['phone', 'vehicleOwned', 'serviceCategories', 'serviceRadius', 'bankDetails'];
+    const allowed = ['phone', 'vehicleOwned', 'serviceCategories', 'supportedServiceIds', 'serviceAddress', 'serviceRadius', 'bankDetails'];
     const updates = {};
     allowed.forEach((key) => {
       if (req.body[key] !== undefined) updates[key] = req.body[key];
     });
+    if (updates.serviceAddress !== undefined && typeof updates.serviceAddress !== 'string') {
+      return next(new AppError('serviceAddress must be a string', 400));
+    }
+    if (updates.serviceAddress !== undefined && !updates.serviceAddress.trim()) {
+      updates.isAvailable = false;
+    }
+    if (updates.serviceCategories !== undefined && !Array.isArray(updates.serviceCategories)) {
+      return next(new AppError('serviceCategories must be an array', 400));
+    }
+    if (updates.supportedServiceIds !== undefined && !Array.isArray(updates.supportedServiceIds)) {
+      return next(new AppError('supportedServiceIds must be an array', 400));
+    }
 
-    const profile = await PartnerProfile.findOneAndUpdate(
-      { userId: req.user._id },
-      { $set: updates },
-      { new: true, runValidators: true }
+    const profile = await withPartnerAssignmentLock(req.user._id, async () =>
+      PartnerProfile.findOneAndUpdate(
+        { userId: req.user._id },
+        { $set: updates },
+        { new: true, runValidators: true }
+      )
     );
     if (!profile) {
-      return next(new AppError('Partner profile not found', 404));
+      return next(new AppError('Partner profile is busy; retry the update', 409));
     }
     res.json({ success: true, data: { profile } });
   } catch (err) {
@@ -89,17 +105,31 @@ export const updatePartnerProfile = async (req, res, next) => {
 // ---------------------------------------------------------------------------
 export const updateLocation = async (req, res, next) => {
   try {
-    const { lat, lng } = req.body;
-    if (lat === undefined || lng === undefined) {
-      return next(new AppError('lat and lng are required', 400));
+    const { lat: rawLat, lng: rawLng, serviceAddress } = req.body;
+    const lat = Number(rawLat);
+    const lng = Number(rawLng);
+    if (
+      rawLat === undefined || rawLat === null || String(rawLat).trim() === '' ||
+      rawLng === undefined || rawLng === null || String(rawLng).trim() === '' ||
+      !Number.isFinite(lat) || lat < -90 || lat > 90 ||
+      !Number.isFinite(lng) || lng < -180 || lng > 180 ||
+      typeof serviceAddress !== 'string' || !serviceAddress.trim()
+    ) {
+      return next(new AppError('A service address and valid latitude/longitude are required', 400));
     }
-    const profile = await PartnerProfile.findOneAndUpdate(
-      { userId: req.user._id },
-      { $set: { 'currentLocation.coordinates': [parseFloat(lng), parseFloat(lat)] } },
-      { new: true }
+    const profile = await withPartnerAssignmentLock(req.user._id, async () =>
+      PartnerProfile.findOneAndUpdate(
+        { userId: req.user._id },
+        { $set: {
+          'currentLocation.coordinates': [lng, lat],
+          serviceAddress: serviceAddress.trim(),
+          locationUpdatedAt: new Date(),
+        } },
+        { new: true, runValidators: true }
+      )
     );
     if (!profile) {
-      return next(new AppError('Partner profile not found', 404));
+      return next(new AppError('Partner profile is busy; retry the location update', 409));
     }
     res.json({ success: true, data: { profile } });
   } catch (err) {
@@ -112,12 +142,33 @@ export const updateLocation = async (req, res, next) => {
 // ---------------------------------------------------------------------------
 export const toggleAvailability = async (req, res, next) => {
   try {
-    const profile = await PartnerProfile.findOne({ userId: req.user._id });
-    if (!profile) {
-      return next(new AppError('Partner profile not found', 404));
+    const { isAvailable } = req.body;
+    if (typeof isAvailable !== 'boolean') {
+      return next(new AppError('isAvailable must be true or false', 400));
     }
-    profile.isAvailable = !profile.isAvailable;
-    await profile.save();
+    let availabilityError = null;
+    const profile = await withPartnerAssignmentLock(req.user._id, async (lockedProfile) => {
+      if (isAvailable && !lockedProfile.isVerified) {
+        availabilityError = new AppError('Your account must be verified before going online', 403);
+        return null;
+      }
+      if (isAvailable && (!lockedProfile.locationUpdatedAt || !lockedProfile.serviceAddress)) {
+        availabilityError = new AppError('Set your service address and location before going online', 400);
+        return null;
+      }
+      lockedProfile.isAvailable = isAvailable;
+      await lockedProfile.save();
+      return lockedProfile;
+    });
+    if (availabilityError) return next(availabilityError);
+    if (!profile) return next(new AppError('Partner profile is busy; retry the availability change', 409));
+    if (isAvailable) {
+      try {
+        await assignPendingBookings();
+      } catch (err) {
+        console.error('[PartnerAssignment] Could not retry pending bookings:', err);
+      }
+    }
     res.json({ success: true, data: { profile } });
   } catch (err) {
     next(err);
@@ -135,10 +186,7 @@ export const getNearbyRequests = async (req, res, next) => {
       return next(new AppError('Your account is not yet verified by admin', 403));
     }
 
-    const requests = await Booking.find({
-      status: { $in: ['searching_partner', 'pending'] },
-      partnerId: null,
-    })
+    const requests = await Booking.find({ status: 'partner_assigned', partnerId: req.user._id })
       .populate('customerId', 'name phone')
       .populate('vehicleId', 'make model type licensePlate')
       .populate('serviceId', 'name category price duration')
@@ -164,41 +212,54 @@ export const acceptRequest = async (req, res, next) => {
       return next(new AppError('Your account is not yet verified by admin', 403));
     }
 
-    // Atomic findOneAndUpdate to prevent double-accepts
-    const booking = await Booking.findOneAndUpdate(
-      { _id: bookingId, status: { $in: ['searching_partner', 'pending'] }, partnerId: null },
-      {
-        $set: {
-          partnerId: req.user._id,
-          status: 'partner_assigned',
-          partnerAssignedAt: new Date(),
-        },
-        $push: {
-          statusHistory: {
-            status: 'partner_assigned',
-            changedAt: new Date(),
-            changedBy: req.user._id,
-            note: 'Partner accepted the request',
+    const booking = await withPartnerAssignmentLock(req.user._id, async (lockedProfile) => {
+      if (!lockedProfile.isVerified || !lockedProfile.isActive) return null;
+      const current = await Booking.findOne({
+        _id: bookingId,
+        partnerId: req.user._id,
+        status: 'partner_assigned',
+      });
+      if (!current) return null;
+
+      const conflict = await Booking.exists({
+        _id: { $ne: current._id },
+        partnerId: req.user._id,
+        status: { $in: ['confirmed', 'partner_assigned', 'partner_accepted', 'partner_on_way', 'partner_arrived', 'in_progress'] },
+        startAt: { $lt: current.endAt },
+        endAt: { $gt: current.startAt },
+      });
+      if (conflict) return null;
+
+      const now = new Date();
+      return Booking.findOneAndUpdate(
+        { _id: bookingId, partnerId: req.user._id, status: 'partner_assigned' },
+        {
+          $set: { status: 'partner_accepted' },
+          $push: {
+            statusHistory: {
+              status: 'partner_accepted',
+              changedAt: now,
+              changedBy: req.user._id,
+              note: 'Partner accepted the assigned booking',
+            },
           },
         },
-      },
-      { new: true }
-    );
+        { new: true }
+      );
+    });
 
-    if (!booking) {
-      return next(new AppError('Request no longer available or already assigned', 409));
-    }
+    if (!booking) return next(new AppError('Request is no longer available or conflicts with another job', 409));
 
     // Emit socket event
     try {
       const { emitToBooking } = await import('../services/socketService.js');
-      emitToBooking(bookingId, 'booking:assigned', {
+      emitToBooking(bookingId, 'booking:status_update', {
         bookingId,
-        partnerId: req.user._id,
-        partnerName: req.user.name,
-        status: 'partner_assigned',
+        status: 'partner_accepted',
       });
-    } catch {}
+    } catch (err) {
+      console.error('[PartnerAssignment] Could not emit acceptance event:', err);
+    }
 
     res.json({ success: true, data: { booking } });
   } catch (err) {
@@ -217,23 +278,38 @@ export const rejectRequest = async (req, res, next) => {
       return next(new AppError('Your account is not yet verified by admin', 403));
     }
 
-    // No status change — partner just opts out; log it in statusHistory.
     const { bookingId } = req.params;
-    // Only log for unassigned requests still awaiting a partner.
-    await Booking.updateOne(
-      { _id: bookingId, status: { $in: ['searching_partner', 'pending'] }, partnerId: null },
+    const booking = await Booking.findOneAndUpdate(
+      { _id: bookingId, status: 'partner_assigned', partnerId: req.user._id },
       {
+        $set: { status: 'searching_partner', partnerId: null, partnerAssignedAt: null, partnerDistanceKm: null },
+        $addToSet: { rejectedPartnerIds: req.user._id },
         $push: {
           statusHistory: {
             status: 'searching_partner',
             changedAt: new Date(),
             changedBy: req.user._id,
-            note: `Rejected by partner ${req.user._id}`,
+            note: 'Partner declined the assignment',
           },
         },
-      }
+      },
+      { new: true }
     );
-    res.json({ success: true });
+    if (!booking) return next(new AppError('This booking is no longer assigned to you', 409));
+
+    const populated = await Booking.findById(booking._id)
+      .populate('vehicleId', 'type make model')
+      .populate('serviceId', 'name category vehicleTypes');
+    let assignedPartner = null;
+    try {
+      assignedPartner = await tryAssignPartner(populated);
+    } catch (err) {
+      console.error('[PartnerAssignment] Could not reassign rejected booking:', err);
+    }
+    res.json({
+      success: true,
+      data: { booking: await Booking.findById(booking._id), assigned: Boolean(assignedPartner) },
+    });
   } catch (err) {
     next(err);
   }
@@ -241,7 +317,7 @@ export const rejectRequest = async (req, res, next) => {
 
 // Partner-side valid transitions
 const PARTNER_TRANSITIONS = {
-  partner_assigned: ['partner_on_way'],
+  partner_accepted: ['partner_on_way'],
   partner_on_way: ['partner_arrived'],
   partner_arrived: ['in_progress'],
   in_progress: ['completed'],
@@ -312,6 +388,9 @@ export const updateJobStatus = async (req, res, next) => {
             totalEarnings: updated.priceAtBooking || 0,
           },
         }
+      );
+      assignPendingBookings().catch((err) =>
+        console.error('[PartnerAssignment] Retry after completion failed:', err)
       );
     }
 

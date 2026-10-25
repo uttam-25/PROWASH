@@ -3,51 +3,15 @@
   "findings": [
     {
       "severity": "HIGH",
-      "file": "web/src/pages/admin/AdminDashboardPage.jsx",
-      "issue": "Admin dashboard reads `dashboard?.stats` but getDashboard returns a flat object with no `stats` key. All eight stat cards display '—'.",
-      "fix": "Change `const stats = dashboard?.stats || {}` to `const stats = dashboard || {}` and align key names: use `todayAppointments` (server key) instead of `todayBookings`, and source `confirmedBookings`, `inProgressBookings`, and `completedToday` from the `reports` object already fetched."
+      "file": "web/src/pages/customer/BookingWizard.jsx",
+      "issue": "fetchServices reads res.data.data.services on a response where res.data.data is a bare array (getServices returns { data: Array }), so the services list is always empty and BookingWizard step 3 is unusable.",
+      "fix": "Change the read to: const list = res.data.data?.services || res.data.data || []. Alternatively wrap the server response in serviceController.getServices to { success: true, data: { services } }."
     },
     {
       "severity": "HIGH",
-      "file": "web/src/pages/admin/AdminDashboardPage.jsx",
-      "issue": "Recent-bookings table reads `dashboard?.recentBookings` which does not exist in the getDashboard response; the table is always empty.",
-      "fix": "Read `reports.recentBookings` (already fetched from getReports) instead of `dashboard.recentBookings`."
-    },
-    {
-      "severity": "MEDIUM",
-      "file": "web/src/pages/partner/PartnerJobPage.jsx + server/src/routes/partnerRoutes.js",
-      "issue": "No GET /partner/jobs/:id endpoint exists. PartnerJobPage fetches the entire job list and scans it client-side for the requested ID.",
-      "fix": "Add `router.get('/jobs/:bookingId', protect, requirePartner, getJobById)` and a controller that calls `Booking.findOne({ _id: bookingId, partnerId: req.user._id })`."
-    },
-    {
-      "severity": "MEDIUM",
-      "file": "web/src/pages/partner/PartnerJobPage.jsx",
-      "issue": "Photo upload calls `URL.createObjectURL()` and sends the resulting `blob:` URL to the backend, where it is persisted in MongoDB. Blob URLs are tab-scoped and become dead references after the session ends.",
-      "fix": "Implement a real upload endpoint (multer + disk or S3 presigned URL) before enabling the photo feature, or disable/hide the UI until the upload path is ready."
-    },
-    {
-      "severity": "MEDIUM",
-      "file": "server/src/controllers/adminController.js",
-      "issue": "`ALLOWED_TRANSITIONS` allows `confirmed → in_progress` without a partnerId, so an admin can complete a booking that was never assigned to a partner, leaving `partnerId: null` on the completed record.",
-      "fix": "Either document this as an intentional manual-dispatch path or add a guard: if the target status is `in_progress` or `completed`, verify `booking.partnerId` is set."
-    },
-    {
-      "severity": "LOW",
-      "file": "server/src/controllers/partnerController.js",
-      "issue": "`registerPartner` returns `{ success, token, user, data: { profile } }` — token and user at root level — while every other endpoint uses `{ success, data: { ... } }`. The frontend works around it but the contract is inconsistent.",
-      "fix": "Reshape the response to `{ success: true, token, data: { user: safeUser, profile } }` to match the auth controller pattern, and update `PartnerRegisterPage` accordingly."
-    },
-    {
-      "severity": "LOW",
-      "file": "web/public/manifest.json",
-      "issue": "Manifest references `/icons/icon-192.png` and `/icons/icon-512.png` which may not exist under `web/public/icons/`. Missing icon files suppress the PWA install prompt silently.",
-      "fix": "Confirm the icon files exist at those paths, or update the manifest to reference paths that do exist."
-    },
-    {
-      "severity": "LOW",
-      "file": "server/src/services/socketService.js + server/src/controllers/partnerController.js",
-      "issue": "The server never emits `new:request` to the `partners` room. PartnerDashboardPage listens for this event but it is never fired, so partners do not receive real-time new-request notifications.",
-      "fix": "In `bookingController.js` where a booking transitions to `searching_partner`, call `emitToAll('partners', 'new:request', { bookingId })` (or add a broadcast helper) after saving."
+      "file": "web/src/api/bookings.js",
+      "issue": "bookingsAPI.cancelBooking(id) sends no request body. bookingController.cancelBooking requires a non-empty reason field and returns 400 AppError when absent, so every customer cancel attempt fails.",
+      "fix": "Add a reason parameter: cancelBooking: (id, reason) => api.patch(`/bookings/${id}/cancel`, { reason }). Update MyBookingsPage and BookingDetailPage to collect and pass a reason, or remove the server-side requirement for customer-initiated cancels."
     }
   ],
   "reviewDoc": "c:\\Users\\Dell\\Desktop\\PROWASH\\.agents\\tasks\\phase7-review.md"

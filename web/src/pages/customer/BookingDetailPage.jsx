@@ -14,6 +14,11 @@ import EmptyState from '../../components/ui/EmptyState'
 const STATUS_COLORS = {
   pending: 'bg-yellow-100 text-yellow-800',
   confirmed: 'bg-blue-100 text-blue-800',
+  searching_partner: 'bg-yellow-100 text-yellow-800',
+  partner_assigned: 'bg-blue-100 text-blue-800',
+  partner_accepted: 'bg-indigo-100 text-indigo-800',
+  partner_on_way: 'bg-indigo-100 text-indigo-800',
+  partner_arrived: 'bg-purple-100 text-purple-800',
   in_progress: 'bg-orange-100 text-orange-800',
   completed: 'bg-green-100 text-green-800',
   cancelled: 'bg-red-100 text-red-800',
@@ -44,7 +49,7 @@ export default function BookingDetailPage() {
     setError(null)
     try {
       const res = await bookingsAPI.getBooking(id)
-      setBooking(res.data.data.booking)
+      setBooking(res.data.data?.booking || res.data.data)
     } catch (err) {
       setError(err.message || 'Failed to load booking.')
     } finally {
@@ -53,15 +58,15 @@ export default function BookingDetailPage() {
   }
 
   async function fetchSlots(date) {
-    if (!booking?.service?._id && !booking?.service) return
+    if (!booking?.serviceId?._id && !booking?.serviceId) return
     setSlotsLoading(true)
     setSlotsError(null)
     setSelectedSlot(null)
     try {
-      const serviceId = booking.service?._id || booking.service
+      const serviceId = booking.serviceId?._id || booking.serviceId
       const dateStr = format(date, 'yyyy-MM-dd')
       const res = await availabilityAPI.getSlots(serviceId, dateStr)
-      setSlots(res.data.data.slots || [])
+      setSlots(res.data.data?.availableSlots || res.data.data?.slots || [])
     } catch {
       setSlotsError('Failed to load available slots.')
     } finally {
@@ -111,7 +116,7 @@ export default function BookingDetailPage() {
   )
   if (!booking) return null
 
-  const canCancel = booking.status === 'pending' || booking.status === 'confirmed'
+  const canCancel = ['pending', 'confirmed', 'searching_partner', 'partner_assigned'].includes(booking.status)
 
   return (
     <div className="p-6 space-y-6 max-w-4xl">
@@ -136,7 +141,7 @@ export default function BookingDetailPage() {
           </p>
         </div>
         <span className={`badge text-base px-4 py-1.5 font-semibold ${STATUS_COLORS[booking.status] || 'bg-gray-100 text-gray-700'}`}>
-          {booking.status?.replace('_', ' ')}
+          {booking.status?.replace(/_/g, ' ')}
         </span>
       </div>
 
@@ -145,16 +150,16 @@ export default function BookingDetailPage() {
         {/* Service */}
         <div className="card p-5 space-y-2">
           <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Service</p>
-          <p className="font-bold text-gray-800 text-lg">{booking.service?.name || '—'}</p>
-          {booking.service?.category && <Badge label={booking.service.category} />}
+          <p className="font-bold text-gray-800 text-lg">{booking.serviceId?.name || booking.serviceNameSnapshot || '—'}</p>
+          {booking.serviceId?.category && <Badge label={booking.serviceId.category} />}
           <div className="flex items-center gap-4 pt-1">
             <p className="text-xl font-bold text-primary">
-              ₹{(booking.priceAtBooking ?? booking.service?.price)?.toLocaleString('en-IN')}
+              ₹{(booking.priceAtBooking ?? booking.serviceId?.price)?.toLocaleString('en-IN')}
             </p>
-            {booking.service?.durationMinutes && (
+              {booking.serviceId?.duration && (
               <div className="flex items-center gap-1 text-sm text-gray-500">
                 <Clock className="w-4 h-4" />
-                {booking.service.durationMinutes} min
+                  {booking.serviceId.duration} min
               </div>
             )}
           </div>
@@ -163,12 +168,12 @@ export default function BookingDetailPage() {
         {/* Vehicle */}
         <div className="card p-5 space-y-2">
           <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Vehicle</p>
-          <p className="font-bold text-gray-800 text-lg">{booking.vehicle?.registrationNumber || '—'}</p>
+          <p className="font-bold text-gray-800 text-lg">{booking.vehicleId?.licensePlate || '—'}</p>
           <p className="text-sm text-gray-500">
-            {booking.vehicle?.make} {booking.vehicle?.model}
+            {booking.vehicleId?.make} {booking.vehicleId?.model}
           </p>
-          {booking.vehicle?.vehicleType && <Badge label={booking.vehicle.vehicleType} />}
-          {booking.vehicle?.color && <p className="text-sm text-gray-400">{booking.vehicle.color}</p>}
+          {booking.vehicleId?.type && <Badge label={booking.vehicleId.type} />}
+          {booking.vehicleId?.color && <p className="text-sm text-gray-400">{booking.vehicleId.color}</p>}
         </div>
 
         {/* Appointment */}
@@ -178,8 +183,8 @@ export default function BookingDetailPage() {
             <>
               <p className="font-bold text-gray-800">{format(parseISO(booking.startAt), 'EEEE, dd MMMM yyyy')}</p>
               <p className="text-lg text-gray-600">{format(parseISO(booking.startAt), 'hh:mm a')}</p>
-              {booking.service?.durationMinutes && (
-                <p className="text-sm text-gray-400">{booking.service.durationMinutes} min duration</p>
+              {booking.serviceId?.duration && (
+                <p className="text-sm text-gray-400">{booking.serviceId.duration} min duration</p>
               )}
             </>
           ) : <p className="text-gray-400">—</p>}
@@ -193,9 +198,32 @@ export default function BookingDetailPage() {
             <Badge status={booking.paymentStatus} />
           </div>
           <p className="text-xl font-bold text-gray-800">
-            ₹{(booking.priceAtBooking ?? booking.service?.price)?.toLocaleString('en-IN')}
+            ₹{(booking.priceAtBooking ?? booking.serviceId?.price)?.toLocaleString('en-IN')}
           </p>
         </div>
+
+        {booking.customerLocation?.address && (
+          <div className="card p-5">
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Service Address</p>
+            <p className="text-gray-800">{booking.customerLocation.address}</p>
+            {booking.locationMatchStatus === 'location_required' && (
+              <p className="mt-2 text-sm text-amber-700">
+                Nearby partner assignment is waiting for valid location coordinates.
+              </p>
+            )}
+          </div>
+        )}
+
+        {booking.partnerId?.name && (
+          <div className="card p-5">
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Assigned Partner</p>
+            <p className="font-semibold text-gray-800">{booking.partnerId.name}</p>
+            {booking.partnerId.phone && <p className="text-sm text-gray-600">{booking.partnerId.phone}</p>}
+            {booking.partnerDistanceKm != null && (
+              <p className="text-sm text-gray-500">{Number(booking.partnerDistanceKm).toFixed(2)} km away</p>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Status Timeline */}

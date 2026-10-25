@@ -71,7 +71,7 @@ export default function PaymentScreen({ route, navigation }) {
   if (screenState === 'cod_fallback') {
     return (
       <View style={styles.container}>
-        <AppHeader title="Booking Confirmed" showBack={false} />
+        <AppHeader title="Booking Request Received" showBack={false} />
         <ScrollView contentContainerStyle={styles.content}>
           <View style={styles.successIconRow}>
             <View style={styles.successIconCircle}>
@@ -86,7 +86,7 @@ export default function PaymentScreen({ route, navigation }) {
             <Text style={styles.infoServiceName}>{serviceName}</Text>
             <Text style={styles.infoAmount}>Amount due: ₹{amount}</Text>
             <Text style={styles.infoMessage}>
-              Your booking is confirmed. Please pay cash when the technician arrives.
+              Your booking request is received. We will update you when a nearby partner is assigned. Please pay cash at the time of service.
             </Text>
           </View>
 

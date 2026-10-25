@@ -9,9 +9,9 @@ import Button from '../../components/ui/Button'
 import Badge from '../../components/ui/Badge'
 
 const STATUS_BUTTON_MAP = {
-  partner_assigned: { label: 'Head to Location', next: 'partner_on_way' },
+  partner_accepted: { label: 'Head to Location', next: 'partner_on_way' },
   partner_on_way:   { label: 'Mark Arrived',     next: 'partner_arrived' },
-  partner_arrived:  { label: 'Start Service',    next: 'in_progress' },
+  partner_arrived:  { label: 'Start Wash',       next: 'in_progress' },
   in_progress:      { label: 'Complete Service', next: 'completed' },
 }
 
@@ -133,6 +133,9 @@ export default function PartnerJobPage() {
         <div className="card p-5">
           <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Customer Location</p>
           <p className="text-gray-800">{booking.customerLocation.address}</p>
+          {booking.partnerDistanceKm != null && (
+            <p className="text-sm text-gray-500 mt-1">{Number(booking.partnerDistanceKm).toFixed(2)} km away</p>
+          )}
         </div>
       )}
 

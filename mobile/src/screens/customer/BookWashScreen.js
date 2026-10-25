@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -60,6 +60,13 @@ function getNext14Days() {
   return days;
 }
 
+function createRequestId() {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (character) => {
+    const random = Math.floor(Math.random() * 16);
+    return (character === 'x' ? random : (random & 0x3) | 0x8).toString(16);
+  });
+}
+
 // ─── Step components ──────────────────────────────────────────────────────────
 
 function StepDots({ currentStep, total }) {
@@ -114,7 +121,12 @@ export default function BookWashScreen() {
   const [selectedSlot, setSelectedSlot] = useState(null);
   const [notes, setNotes] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('cod');
+  const [serviceAddress, setServiceAddress] = useState('');
+  const [serviceLatitude, setServiceLatitude] = useState('');
+  const [serviceLongitude, setServiceLongitude] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const confirmInFlightRef = useRef(false);
+  const confirmRequestRef = useRef({ fingerprint: null, requestId: null });
 
   const [vehicles, setVehicles] = useState([]);
   const [loadingVehicles, setLoadingVehicles] = useState(false);
@@ -208,17 +220,37 @@ export default function BookWashScreen() {
   };
 
   const handleConfirmBooking = async () => {
+    if (confirmInFlightRef.current) return;
+    const lat = serviceLatitude.trim() === '' ? NaN : Number(serviceLatitude);
+    const lng = serviceLongitude.trim() === '' ? NaN : Number(serviceLongitude);
+    if (!serviceAddress.trim() || !Number.isFinite(lat) || lat < -90 || lat > 90 ||
+        !Number.isFinite(lng) || lng < -180 || lng > 180) {
+      setSubmitError('Enter a service address and valid latitude/longitude to find a nearby partner.');
+      return;
+    }
+
+    confirmInFlightRef.current = true;
     setIsSubmitting(true);
     setSlotError409(false);
     setSubmitError(null);
     try {
-      const result = await bookingService.createBooking({
+      const requestData = {
         vehicleId: selectedVehicle._id,
         serviceId: selectedService._id,
         startAt: selectedSlot.startAt,
         paymentMethod,
         notes: notes.trim() || undefined,
-      });
+        customerLocation: {
+          address: serviceAddress.trim(),
+          lat,
+          lng,
+        },
+      };
+      const fingerprint = JSON.stringify(requestData);
+      if (confirmRequestRef.current.fingerprint !== fingerprint) {
+        confirmRequestRef.current = { fingerprint, requestId: createRequestId() };
+      }
+      const result = await bookingService.createBooking(requestData, confirmRequestRef.current.requestId);
       const booking = result.data;
       if (paymentMethod === 'online') {
         navigation.navigate('Payment', {
@@ -240,6 +272,7 @@ export default function BookWashScreen() {
         );
       }
     } finally {
+      confirmInFlightRef.current = false;
       setIsSubmitting(false);
     }
   };
@@ -442,6 +475,40 @@ export default function BookWashScreen() {
           <SummaryRow label="Time" value={slotTime} />
           <SummaryRow label="Amount" value={`₹${service.price || 0}`} isHighlight />
         </View>
+
+        <Text style={styles.fieldLabel}>Service Address</Text>
+        <TextInput
+          value={serviceAddress}
+          onChangeText={setServiceAddress}
+          placeholder="Address where the wash will take place"
+          placeholderTextColor={colors.textSecondary}
+          style={styles.locationInput}
+          accessibilityLabel="Service address"
+        />
+        <Text style={styles.fieldLabel}>Service Location Coordinates</Text>
+        <View style={styles.coordinatesRow}>
+          <TextInput
+            value={serviceLatitude}
+            onChangeText={setServiceLatitude}
+            placeholder="Latitude"
+            placeholderTextColor={colors.textSecondary}
+            keyboardType="numbers-and-punctuation"
+            style={[styles.locationInput, styles.coordinateInput]}
+            accessibilityLabel="Service latitude"
+          />
+          <TextInput
+            value={serviceLongitude}
+            onChangeText={setServiceLongitude}
+            placeholder="Longitude"
+            placeholderTextColor={colors.textSecondary}
+            keyboardType="numbers-and-punctuation"
+            style={[styles.locationInput, styles.coordinateInput]}
+            accessibilityLabel="Service longitude"
+          />
+        </View>
+        <Text style={styles.locationHint}>
+          Coordinates are required to match an online partner within 2 km. Enter them from a map.
+        </Text>
 
         {/* Notes */}
         <Text style={styles.fieldLabel}>Notes (optional)</Text>
@@ -774,6 +841,27 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     ...typography.makeTextStyle('md', 'regular', colors.textPrimary),
     minHeight: 80,
+    marginBottom: spacing.lg,
+  },
+  locationInput: {
+    backgroundColor: colors.white,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    borderRadius: spacing.borderRadius.sm,
+    padding: spacing.md,
+    ...typography.makeTextStyle('md', 'regular', colors.textPrimary),
+    minHeight: 48,
+    marginBottom: spacing.md,
+  },
+  coordinatesRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  coordinateInput: {
+    flex: 1,
+  },
+  locationHint: {
+    ...typography.makeTextStyle('xs', 'regular', colors.textSecondary),
     marginBottom: spacing.lg,
   },
   paymentRow: {

@@ -11,7 +11,7 @@ import EmptyState from '../../components/ui/EmptyState'
 
 const TAB_LIST = [
   { label: 'All', value: '' },
-  { label: 'Active', value: 'partner_assigned,partner_on_way,partner_arrived,in_progress' },
+  { label: 'Active', value: 'partner_assigned,partner_accepted,partner_on_way,partner_arrived,in_progress' },
   { label: 'Completed', value: 'completed' },
   { label: 'Cancelled', value: 'cancelled' },
 ]
